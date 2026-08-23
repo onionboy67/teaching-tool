@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teaching Tool</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+    }
+
+    .page {
+      width: min(1100px, 92%);
+      margin: 0 auto;
+      padding: 50px 0 80px;
+    }
+
+    h1 {
+      font-size: 42px;
+      margin: 0 0 35px;
+    }
+
+    h2 {
+      font-size: 28px;
+      margin: 45px 0 18px;
+    }
+
+    .calendar-card {
+      background: white;
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 5px 25px rgba(0, 0, 0, 0.06);
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .calendar-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 22px;
+    }
+
+    .calendar-header h3 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .calendar-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .calendar-controls button {
+      border: none;
+      background: #eeeeef;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 7px;
+    }
+
+    .weekday {
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: #777;
+      padding-bottom: 8px;
+    }
+
+    .day {
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      font-size: 15px;
+    }
+
+    .day.empty {
+      visibility: hidden;
+    }
+
+    .day.today {
+      background: #1d1d1f;
+      color: white;
+      font-weight: 700;
+    }
+
+    .subjects {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 16px;
+    }
+
+    .subject-card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      background: white;
+      padding: 28px 24px;
+      border-radius: 20px;
+      font-size: 20px;
+      font-weight: 650;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.05);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .subject-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.09);
+    }
+
+    .grade-4 .subject-card:nth-child(1) {
+      border-top: 5px solid #a7f432;
+    }
+
+    .grade-4 .subject-card:nth-child(2) {
+      border-top: 5px solid #ff69b4;
+    }
+
+    .grade-56 .subject-card:nth-child(1) {
+      border-top: 5px solid #63d8ff;
+    }
+
+    .grade-56 .subject-card:nth-child(2) {
+      border-top: 5px solid #ffb347;
+    }
+
+    .grade-56 .subject-card:nth-child(3) {
+      border-top: 5px solid #b78cff;
+    }
+
+    .grade-56 .subject-card:nth-child(4) {
+      border-top: 5px solid #54d98c;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 34px;
+      }
+
+      .calendar-card {
+        padding: 18px;
+      }
+
+      .day {
+        min-height: 42px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page">
+    <h1>Teaching Tool</h1>
+
+    <section class="calendar-card" id="calendarCard">
+      <div class="calendar-header">
+        <h3 id="monthTitle"></h3>
+
+        <div class="calendar-controls">
+          <button id="previousMonth" aria-label="Previous month">←</button>
+          <button id="nextMonth" aria-label="Next month">→</button>
+        </div>
+      </div>
+
+      <div class="calendar-grid" id="calendarGrid"></div>
+    </section>
+
+    <section>
+      <h2>Grade 4</h2>
+
+      <div class="subjects grade-4">
+        <a class="subject-card" href="grade4-math.html">Math</a>
+        <a class="subject-card" href="grade4-ela.html">ELA</a>
+      </div>
+    </section>
+
+    <section>
+      <h2>Grade 5/6</h2>
+
+      <div class="subjects grade-56">
+        <a class="subject-card" href="grade56-math.html">Math</a>
+        <a class="subject-card" href="grade56-ela.html">ELA</a>
+        <a class="subject-card" href="grade56-fine-arts.html">Fine Arts</a>
+        <a class="subject-card" href="grade56-second-step.html">Second Step</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const monthTitle = document.getElementById("monthTitle");
+    const calendarGrid = document.getElementById("calendarGrid");
+
+    const today = new Date();
+    let visibleDate = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    function renderCalendar() {
+      calendarGrid.innerHTML = "";
+
+      const year = visibleDate.getFullYear();
+      const month = visibleDate.getMonth();
+
+      monthTitle.textContent = visibleDate.toLocaleDateString("en-CA", {
+        month: "long",
+        year: "numeric"
+      });
+
+      weekdays.forEach(day => {
+        const heading = document.createElement("div");
+        heading.className = "weekday";
+        heading.textContent = day;
+        calendarGrid.appendChild(heading);
+      });
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      for (let i = 0; i < firstDay; i++) {
+        const empty = document.createElement("div");
+        empty.className = "day empty";
+        calendarGrid.appendChild(empty);
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateCell = document.createElement("div");
+        dateCell.className = "day";
+        dateCell.textContent = day;
+
+        const isToday =
+          day === today.getDate() &&
+          month === today.getMonth() &&
+          year === today.getFullYear();
+
+        if (isToday) {
+          dateCell.classList.add("today");
+        }
+
+        calendarGrid.appendChild(dateCell);
+      }
+    }
+
+    document.getElementById("previousMonth").addEventListener("click", event => {
+      event.stopPropagation();
+      visibleDate.setMonth(visibleDate.getMonth() - 1);
+      renderCalendar();
+    });
+
+    document.getElementById("nextMonth").addEventListener("click", event => {
+      event.stopPropagation();
+      visibleDate.setMonth(visibleDate.getMonth() + 1);
+      renderCalendar();
+    });
+
+    document.getElementById("calendarCard").addEventListener("click", () => {
+      window.location.href = "calendar.html";
+    });
+
+    renderCalendar();
+  </script>
+</body>
+</html>
