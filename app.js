@@ -4,8 +4,8 @@
    Unit Planner + lesson placeholders + portable backup/read view
 ============================================================ */
 
-const STORAGE_KEY = "teacherHQData_v3";
-const LEGACY_STORAGE_KEYS = ["teacherHQData_v2", "teacherHQData_v1"];
+const STORAGE_KEY = "teacherHQData_v4";
+const LEGACY_STORAGE_KEYS = ["teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
 
 const DEFAULT_GRADES = [
   "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
@@ -14,6 +14,11 @@ const DEFAULT_GRADES = [
 
 const DEFAULT_SUBJECTS = ["ELA", "Math", "Second Step", "Fine Arts"];
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const FUN_UNIT_COLOURS = [
+  "#FF5F8F", "#8C6CFF", "#33C7FF", "#39D98A", "#FFB347", "#F04FCB",
+  "#6EDB3F", "#FF7043", "#00B8D9", "#FFC93C", "#A45CFF", "#00C48C",
+  "#FF4D6D", "#5B8CFF", "#FF8A3D", "#2DD4BF", "#C45CFF", "#A6E22E"
+];
 const CURRICULUM = Array.isArray(window.TEACHER_HQ_CURRICULUM)
   ? window.TEACHER_HQ_CURRICULUM
   : [];
@@ -94,6 +99,9 @@ const daysOffDialog = $("daysOffDialog");
 const dayOffForm = $("dayOffForm");
 const dayOffType = $("dayOffType");
 const pdFields = $("pdFields");
+const nonPDTypeFields = $("nonPDTypeFields");
+const dayOffDetailsFields = $("dayOffDetailsFields");
+const nonPDFields = $("nonPDFields");
 
 const unitPlannerDialog = $("unitPlannerDialog");
 const unitWizardDialog = $("unitWizardDialog");
@@ -105,7 +113,7 @@ const lessonPlaceholderDialog = $("lessonPlaceholderDialog");
 ============================================================ */
 
 function defaultData() {
-  return { schemaVersion: 3, activeUserId: null, users: [] };
+  return { schemaVersion: 4, activeUserId: null, users: [] };
 }
 
 function loadData() {
@@ -128,7 +136,7 @@ function loadData() {
 
 function normalizeData(data) {
   const normalized = data && typeof data === "object" ? data : defaultData();
-  normalized.schemaVersion = 3;
+  normalized.schemaVersion = 4;
   if (!Array.isArray(normalized.users)) normalized.users = [];
   if (!("activeUserId" in normalized)) normalized.activeUserId = null;
   normalized.users = normalized.users.map(normalizeUser);
@@ -149,6 +157,7 @@ function normalizeUser(user) {
     calendarExceptions: Array.isArray(user.calendarExceptions)
       ? user.calendarExceptions.map(normalizeException)
       : [],
+    savedHolidayNames: Array.isArray(user.savedHolidayNames) ? user.savedHolidayNames.filter(Boolean) : [],
     units: Array.isArray(user.units) ? user.units.map(normalizeUnit) : []
   };
 
@@ -181,7 +190,16 @@ function normalizeUser(user) {
   }
 
   normalized.terms.sort((a, b) => a.startDate.localeCompare(b.startDate));
-  normalized.calendarExceptions.sort((a, b) => a.date.localeCompare(b.date));
+  normalized.calendarExceptions.sort((a, b) => a.startDate.localeCompare(b.startDate));
+  normalized.calendarExceptions
+    .filter(item => item.type === "Holiday" && item.label)
+    .forEach(item => {
+      if (!normalized.savedHolidayNames.some(name => name.toLowerCase() === item.label.toLowerCase())) {
+        normalized.savedHolidayNames.push(item.label);
+      }
+    });
+  normalized.savedHolidayNames.sort((a, b) => a.localeCompare(b));
+  assignMissingUnitColours(normalized);
   normalized.units.sort((a, b) => (a.startDate || "9999").localeCompare(b.startDate || "9999"));
   return normalized;
 }
@@ -239,13 +257,18 @@ function normalizeBlock(block) {
 }
 
 function normalizeException(item) {
+  const startDate = item.startDate || item.date || "";
+  const endDate = item.endDate || startDate;
   return {
     id: item.id || makeId("day-off"),
-    date: item.date || "",
+    startDate,
+    endDate: endDate < startDate ? startDate : endDate,
+    date: startDate,
     type: ["Holiday", "PD Day", "Other"].includes(item.type) ? item.type : "Other",
     label: item.label || "",
+    description: item.description || item.topic || "",
+    notes: item.notes || "",
     location: item.location || "",
-    topic: item.topic || "",
     createdAt: item.createdAt || new Date().toISOString(),
     updatedAt: item.updatedAt || new Date().toISOString()
   };
@@ -263,6 +286,7 @@ function normalizeUnit(unit) {
       grades: normalizeGradeArray(Array.isArray(classSpec.grades) ? classSpec.grades : []),
       subject: classSpec.subject || ""
     },
+    colour: normalizeHexColour(unit.colour) || "",
     selectedCurriculum: Array.isArray(unit.selectedCurriculum) ? unit.selectedCurriculum : [],
     targetMinutes: Number(unit.targetMinutes) || 0,
     allocationMethod: unit.allocationMethod || "hours",
@@ -277,10 +301,14 @@ function normalizeUnit(unit) {
 }
 
 function normalizeLesson(lesson) {
+  const sequence = Number(lesson.sequence) || 1;
+  const legacyTitle = String(lesson.title || "").trim();
+  const inferredCustomTitle = legacyTitle && !/^Lesson\s+\d+$/i.test(legacyTitle) ? legacyTitle : "";
   return {
     id: lesson.id || makeId("lesson"),
-    sequence: Number(lesson.sequence) || 1,
-    title: lesson.title || `Lesson ${Number(lesson.sequence) || 1}`,
+    sequence,
+    title: `Lesson ${sequence}`,
+    customTitle: String(lesson.customTitle || inferredCustomTitle).trim(),
     dateKey: lesson.dateKey || "",
     startTime: lesson.startTime || "",
     endTime: lesson.endTime || "",
@@ -510,11 +538,102 @@ function blockTypeClass(blockTypeValue) {
 }
 
 function getExceptionForDate(user, dateKey) {
-  return user?.calendarExceptions?.find(item => item.date === dateKey) || null;
+  return user?.calendarExceptions?.find(item =>
+    dateKey >= (item.startDate || item.date || "") &&
+    dateKey <= (item.endDate || item.startDate || item.date || "")
+  ) || null;
 }
 
 function isNoSchoolDate(user, dateKey) {
   return Boolean(getExceptionForDate(user, dateKey));
+}
+
+function exceptionDateLabel(item) {
+  const start = item.startDate || item.date || "";
+  const end = item.endDate || start;
+  return start === end ? formatDate(start) : `${formatDate(start)} – ${formatDate(end)}`;
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+  return startA <= endB && startB <= endA;
+}
+
+function normalizeHexColour(value) {
+  const text = String(value || "").trim().toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(text) ? text : "";
+}
+
+function unitColourUsedByClass(user, classSpec, colour, excludeUnitId = null) {
+  const normalizedColour = normalizeHexColour(colour);
+  if (!normalizedColour) return false;
+  const key = classKey(classSpec);
+  return Boolean(user?.units?.some(unit =>
+    unit.id !== excludeUnitId &&
+    classKey(unit.classSpec) === key &&
+    normalizeHexColour(unit.colour) === normalizedColour
+  ));
+}
+
+function suggestedUnitColour(user, classSpec, excludeUnitId = null, afterColour = null) {
+  const used = new Set((user?.units || [])
+    .filter(unit => unit.id !== excludeUnitId && classKey(unit.classSpec) === classKey(classSpec))
+    .map(unit => normalizeHexColour(unit.colour))
+    .filter(Boolean));
+
+  const normalizedAfter = normalizeHexColour(afterColour);
+  const startIndex = normalizedAfter ? Math.max(0, FUN_UNIT_COLOURS.indexOf(normalizedAfter) + 1) : 0;
+  for (let offset = 0; offset < FUN_UNIT_COLOURS.length; offset++) {
+    const colour = FUN_UNIT_COLOURS[(startIndex + offset) % FUN_UNIT_COLOURS.length];
+    if (!used.has(colour)) return colour;
+  }
+
+  let seed = (user?.units?.length || 0) + 1;
+  while (seed < 360) {
+    const hue = (seed * 47) % 360;
+    const colour = hslToHex(hue, 88, 62);
+    if (!used.has(colour)) return colour;
+    seed++;
+  }
+  return "#FF5F8F";
+}
+
+function assignMissingUnitColours(user) {
+  (user?.units || []).forEach(unit => {
+    if (!normalizeHexColour(unit.colour) || unitColourUsedByClass(user, unit.classSpec, unit.colour, unit.id)) {
+      unit.colour = suggestedUnitColour(user, unit.classSpec, unit.id);
+    }
+  });
+}
+
+function hslToHex(h, s, l) {
+  s /= 100;
+  l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) [r, g] = [c, x];
+  else if (h < 120) [r, g] = [x, c];
+  else if (h < 180) [g, b] = [c, x];
+  else if (h < 240) [g, b] = [x, c];
+  else if (h < 300) [r, b] = [x, c];
+  else [r, b] = [c, x];
+  const hex = value => Math.round((value + m) * 255).toString(16).padStart(2, "0").toUpperCase();
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+function hexToRgba(hex, alpha) {
+  const value = normalizeHexColour(hex) || "#8C6CFF";
+  const r = parseInt(value.slice(1, 3), 16);
+  const g = parseInt(value.slice(3, 5), 16);
+  const b = parseInt(value.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function lessonDisplayTitle(lesson) {
+  const sequence = Number(lesson?.sequence) || 1;
+  const custom = String(lesson?.customTitle || "").trim();
+  return custom ? `${sequence} - ${custom}` : `Lesson ${sequence}`;
 }
 
 /* ============================================================
@@ -683,7 +802,7 @@ createUserForm.addEventListener("submit", async event => {
   const user = normalizeUser({
     id: makeId("user"), username, profileColour: selectedProfileColour, profileImage,
     createdAt: new Date().toISOString(), customGrades: [], customSubjects: [],
-    terms: [], calendarExceptions: [], units: [], lastBackupDate: null
+    terms: [], calendarExceptions: [], savedHolidayNames: [], units: [], lastBackupDate: null
   });
   appData.users.push(user);
   activeUserId = user.id;
@@ -1238,38 +1357,75 @@ function createScheduleBlockElement(block, editable, status = null) {
 $("manageDaysOffButton").addEventListener("click", openDaysOffDialog);
 $("pdAlertButton").addEventListener("click", openDaysOffDialog);
 $("closeDaysOffButton").addEventListener("click", () => daysOffDialog.close());
-dayOffType.addEventListener("change", () => pdFields.classList.toggle("hidden", dayOffType.value !== "PD Day"));
 $("cancelDayOffEditButton").addEventListener("click", resetDayOffForm);
+$("dayOffPDYes").addEventListener("change", updateDayOffFlow);
+$("dayOffPDNo").addEventListener("change", updateDayOffFlow);
+$("dayOffHolidayChoice").addEventListener("change", updateDayOffFlow);
+$("dayOffOtherChoice").addEventListener("change", updateDayOffFlow);
+$("dayOffStartDate").addEventListener("change", () => {
+  if (!$("dayOffEndDate").value || $("dayOffEndDate").value < $("dayOffStartDate").value) {
+    $("dayOffEndDate").value = $("dayOffStartDate").value;
+  }
+  $("dayOffEndDate").min = $("dayOffStartDate").value;
+});
+$("searchPDLocationButton").addEventListener("click", () => {
+  const query = $("pdLocation").value.trim();
+  if (!query) return alert("Enter a location first, then Teacher HQ can search it in Google Maps.");
+  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank", "noopener,noreferrer");
+});
 
 dayOffForm.addEventListener("submit", event => {
   event.preventDefault();
   const user = getActiveUser();
   if (!user || readOnlyMode) return;
 
-  const date = $("dayOffDate").value;
   const type = dayOffType.value;
-  const label = $("dayOffLabel").value.trim();
-  const location = type === "PD Day" ? $("pdLocation").value.trim() : "";
-  const topic = type === "PD Day" ? $("pdTopic").value.trim() : "";
-  if (!date) return alert("Please choose a date.");
+  const startDate = $("dayOffStartDate").value;
+  const endDate = $("dayOffEndDate").value || startDate;
+  if (!type) return alert("Please tell Teacher HQ whether this is a PD Day, Holiday, or Other day off.");
+  if (!startDate || !endDate) return alert("Please choose the start and end date.");
+  if (endDate < startDate) return alert("The end date cannot be before the start date.");
 
-  const duplicate = user.calendarExceptions.find(item => item.date === date && item.id !== editingDayOffId);
-  if (duplicate) return alert(`That date is already marked as ${duplicate.type}. Edit the existing entry instead.`);
-
-  if (editingDayOffId) {
-    const existing = user.calendarExceptions.find(item => item.id === editingDayOffId);
-    if (existing) Object.assign(existing, { date, type, label, location, topic, updatedAt: new Date().toISOString() });
-  } else {
-    user.calendarExceptions.push(normalizeException({
-      id: makeId("day-off"), date, type, label, location, topic,
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
-    }));
+  const overlap = user.calendarExceptions.find(item =>
+    item.id !== editingDayOffId &&
+    rangesOverlap(startDate, endDate, item.startDate || item.date, item.endDate || item.startDate || item.date)
+  );
+  if (overlap) {
+    return alert(`Those dates overlap with ${overlap.label || overlap.type} (${exceptionDateLabel(overlap)}). Edit the existing entry or choose a different range.`);
   }
 
-  user.calendarExceptions.sort((a, b) => a.date.localeCompare(b.date));
-  reconcileFutureUnits(user, date);
+  const label = type === "PD Day" ? "PD Day" : $("dayOffLabel").value.trim();
+  const description = type === "PD Day" ? $("pdDescription").value.trim() : $("dayOffDescription").value.trim();
+  const notes = type === "PD Day" ? "" : $("dayOffNotes").value.trim();
+  const location = type === "PD Day" ? $("pdLocation").value.trim() : "";
+  const previousException = editingDayOffId
+    ? user.calendarExceptions.find(item => item.id === editingDayOffId)
+    : null;
+  const previousStartDate = previousException?.startDate || previousException?.date || startDate;
+  const payload = normalizeException({
+    id: editingDayOffId || makeId("day-off"),
+    startDate, endDate, type, label, description, notes, location,
+    createdAt: previousException?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+
+  if (editingDayOffId) {
+    const index = user.calendarExceptions.findIndex(item => item.id === editingDayOffId);
+    if (index >= 0) user.calendarExceptions[index] = payload;
+  } else {
+    user.calendarExceptions.push(payload);
+  }
+
+  if (type === "Holiday" && label && !user.savedHolidayNames.some(name => name.toLowerCase() === label.toLowerCase())) {
+    user.savedHolidayNames.push(label);
+    user.savedHolidayNames.sort((a, b) => a.localeCompare(b));
+  }
+
+  user.calendarExceptions.sort((a, b) => a.startDate.localeCompare(b.startDate));
+  reconcileFutureUnits(user, previousStartDate < startDate ? previousStartDate : startDate);
   saveData();
   resetDayOffForm();
+  populateHolidayNameSuggestions(user);
   renderDaysOffList(user);
   renderTeacherHQ();
 });
@@ -1278,6 +1434,7 @@ function openDaysOffDialog() {
   const user = getActiveUser();
   if (!user || readOnlyMode) return;
   resetDayOffForm();
+  populateHolidayNameSuggestions(user);
   renderDaysOffList(user);
   daysOffDialog.showModal();
 }
@@ -1286,9 +1443,59 @@ function resetDayOffForm() {
   editingDayOffId = null;
   dayOffForm.reset();
   $("dayOffId").value = "";
-  dayOffType.value = "Holiday";
+  dayOffType.value = "";
+  $("dayOffEndDate").min = "";
+  nonPDTypeFields.classList.add("hidden");
+  dayOffDetailsFields.classList.add("hidden");
   pdFields.classList.add("hidden");
+  nonPDFields.classList.add("hidden");
+  $("holidayNameHint").classList.add("hidden");
   $("cancelDayOffEditButton").classList.add("hidden");
+  $("saveDayOffButton").textContent = "Save Days";
+}
+
+function updateDayOffFlow() {
+  const pdChoice = document.querySelector('input[name="dayOffIsPD"]:checked')?.value || "";
+  if (!pdChoice) {
+    dayOffType.value = "";
+    nonPDTypeFields.classList.add("hidden");
+    dayOffDetailsFields.classList.add("hidden");
+    return;
+  }
+
+  if (pdChoice === "yes") {
+    dayOffType.value = "PD Day";
+    nonPDTypeFields.classList.add("hidden");
+    dayOffDetailsFields.classList.remove("hidden");
+    pdFields.classList.remove("hidden");
+    nonPDFields.classList.add("hidden");
+    return;
+  }
+
+  nonPDTypeFields.classList.remove("hidden");
+  const nonPDChoice = document.querySelector('input[name="dayOffNonPDType"]:checked')?.value || "";
+  dayOffType.value = nonPDChoice;
+  if (!nonPDChoice) {
+    dayOffDetailsFields.classList.add("hidden");
+    pdFields.classList.add("hidden");
+    nonPDFields.classList.add("hidden");
+    return;
+  }
+
+  dayOffDetailsFields.classList.remove("hidden");
+  pdFields.classList.add("hidden");
+  nonPDFields.classList.remove("hidden");
+  $("holidayNameHint").classList.toggle("hidden", nonPDChoice !== "Holiday");
+}
+
+function populateHolidayNameSuggestions(user) {
+  const datalist = $("holidayNameSuggestions");
+  datalist.innerHTML = "";
+  [...new Set(user?.savedHolidayNames || [])].sort((a, b) => a.localeCompare(b)).forEach(name => {
+    const option = document.createElement("option");
+    option.value = name;
+    datalist.appendChild(option);
+  });
 }
 
 function editDayOff(id) {
@@ -1297,21 +1504,32 @@ function editDayOff(id) {
   if (!item) return;
   editingDayOffId = id;
   $("dayOffId").value = id;
-  $("dayOffDate").value = item.date;
-  dayOffType.value = item.type;
-  $("dayOffLabel").value = item.label || "";
-  $("pdLocation").value = item.location || "";
-  $("pdTopic").value = item.topic || "";
-  pdFields.classList.toggle("hidden", item.type !== "PD Day");
+  $("dayOffStartDate").value = item.startDate || item.date;
+  $("dayOffEndDate").value = item.endDate || item.startDate || item.date;
+  $("dayOffEndDate").min = item.startDate || item.date;
+
+  if (item.type === "PD Day") {
+    $("dayOffPDYes").checked = true;
+    $("pdDescription").value = item.description || "";
+    $("pdLocation").value = item.location || "";
+  } else {
+    $("dayOffPDNo").checked = true;
+    $(item.type === "Holiday" ? "dayOffHolidayChoice" : "dayOffOtherChoice").checked = true;
+    $("dayOffLabel").value = item.label || "";
+    $("dayOffDescription").value = item.description || "";
+    $("dayOffNotes").value = item.notes || "";
+  }
+  updateDayOffFlow();
   $("cancelDayOffEditButton").classList.remove("hidden");
+  $("saveDayOffButton").textContent = "Save Changes";
 }
 
 function deleteDayOff(id) {
   const user = getActiveUser();
   const item = user?.calendarExceptions.find(exception => exception.id === id);
-  if (!user || !item || !confirm(`Remove ${formatDate(item.date)} from Days Off?`)) return;
+  if (!user || !item || !confirm(`Remove ${item.label || item.type} (${exceptionDateLabel(item)}) from Days Off?`)) return;
   user.calendarExceptions = user.calendarExceptions.filter(exception => exception.id !== id);
-  reconcileFutureUnits(user, item.date);
+  reconcileFutureUnits(user, item.startDate || item.date);
   saveData();
   renderDaysOffList(user);
   renderTeacherHQ();
@@ -1332,15 +1550,20 @@ function renderDaysOffList(user) {
     const card = document.createElement("div");
     card.className = `day-off-card day-off-${item.type.toLowerCase().replaceAll(" ", "-")}`;
     const info = document.createElement("div");
+    info.className = "day-off-card-copy";
     const title = document.createElement("strong");
-    title.textContent = `${formatDate(item.date)} · ${item.label || item.type}`;
+    title.textContent = item.label || item.type;
+    const date = document.createElement("div");
+    date.className = "day-off-date-label";
+    date.textContent = exceptionDateLabel(item);
     const meta = document.createElement("div");
     meta.className = "term-meta";
     const details = [item.type];
-    if (item.type === "PD Day" && item.location) details.push(item.location);
-    if (item.type === "PD Day" && item.topic) details.push(item.topic);
+    if (item.description) details.push(item.description);
+    if (item.location) details.push(item.location);
+    if (item.notes) details.push(`Notes: ${item.notes}`);
     meta.textContent = details.join(" · ");
-    info.append(title, meta);
+    info.append(title, date, meta);
     card.appendChild(info);
 
     const actions = document.createElement("div");
@@ -1365,8 +1588,13 @@ function getPDAttentionItems(user) {
   const todayKey = getLocalDateKey();
   const twoWeeksKey = addDaysToKey(todayKey, 14);
   return user.calendarExceptions
-    .filter(item => item.type === "PD Day" && item.date >= todayKey && item.date <= twoWeeksKey && (!item.location || !item.topic))
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .filter(item => {
+      if (item.type !== "PD Day") return false;
+      const start = item.startDate || item.date;
+      const end = item.endDate || start;
+      return end >= todayKey && start <= twoWeeksKey && (!item.location || !item.description);
+    })
+    .sort((a, b) => (a.startDate || a.date).localeCompare(b.startDate || b.date));
 }
 
 function renderPDAttention(user) {
@@ -1377,12 +1605,12 @@ function renderPDAttention(user) {
   }
   const first = items[0];
   pdAlertText.textContent = items.length === 1
-    ? `PD Day details need attention — ${formatDate(first.date)}`
-    : `${items.length} upcoming PD Days have incomplete details`;
+    ? `PD Day details need attention — ${exceptionDateLabel(first)}`
+    : `${items.length} upcoming PD Day entries have incomplete details`;
   const missing = [];
   if (!first.location) missing.push("location");
-  if (!first.topic) missing.push("topic");
-  pdAlertDetail.textContent = `${first.label || "PD Day"}: missing ${missing.join(" and ")}.`;
+  if (!first.description) missing.push("description");
+  pdAlertDetail.textContent = `PD Day: missing ${missing.join(" and ")}.`;
   pdAlert.classList.remove("hidden");
 }
 
@@ -1476,11 +1704,11 @@ function renderCalendar() {
 
     const exception = user ? getExceptionForDate(user, dateKey) : null;
     if (exception) {
-      cell.classList.add("no-school-day");
+      cell.classList.add("no-school-day", `no-school-${exception.type.toLowerCase().replaceAll(" ", "-")}`);
       const chip = document.createElement("span");
       chip.className = `day-off-chip ${exception.type === "PD Day" ? "pd-chip" : ""}`;
-      chip.textContent = exception.type === "PD Day" ? "PD" : exception.type === "Holiday" ? "Holiday" : "Off";
-      chip.title = exception.label || exception.type;
+      chip.textContent = exception.label || exception.type;
+      chip.title = `${exception.type} · ${exceptionDateLabel(exception)}`;
       cell.appendChild(chip);
     } else {
       const occurrences = user ? getOccurrencesForDate(date, user) : [];
@@ -1594,9 +1822,10 @@ function openDayDetails(dateKey) {
   if (exception) {
     dayExceptionSummary.classList.remove("hidden");
     dayExceptionSummary.className = `day-exception-summary ${exception.type === "PD Day" ? "pd-summary" : ""}`;
-    const details = [exception.label || exception.type];
-    if (exception.type === "PD Day" && exception.location) details.push(`Location: ${exception.location}`);
-    if (exception.type === "PD Day" && exception.topic) details.push(`Topic: ${exception.topic}`);
+    const details = [exception.label || exception.type, exceptionDateLabel(exception)];
+    if (exception.description) details.push(exception.description);
+    if (exception.location) details.push(`Location: ${exception.location}`);
+    if (exception.notes) details.push(`Notes: ${exception.notes}`);
     dayExceptionSummary.textContent = `${exception.type} · ${details.join(" · ")}`;
     const empty = document.createElement("p");
     empty.className = "section-subtitle";
@@ -1640,7 +1869,8 @@ function openDayDetails(dateKey) {
       const allocation = document.createElement("button");
       allocation.type = "button";
       allocation.className = "unit-allocation-link";
-      allocation.textContent = `${unit.name} · ${lesson.title}`;
+      allocation.style.setProperty("--unit-colour", unit.colour || "#8C6CFF");
+      allocation.textContent = `${unit.name} · ${lessonDisplayTitle(lesson)}`;
       allocation.addEventListener("click", () => openLessonPlaceholder(unit.id, lesson.id));
       card.appendChild(allocation);
     });
@@ -1839,6 +2069,7 @@ function makeUnitCard(unit, compact) {
   const card = document.createElement("button");
   card.type = "button";
   card.className = `unit-card ${compact ? "compact-unit-card" : ""}`;
+  card.style.setProperty("--unit-colour", unit.colour || "#8C6CFF");
   const name = document.createElement("strong");
   name.textContent = unit.name;
   const meta = document.createElement("div");
@@ -1894,6 +2125,25 @@ $("unitNextMonth").addEventListener("click", () => {
   unitVisibleDate = new Date(unitVisibleDate.getFullYear(), unitVisibleDate.getMonth() + 1, 1);
   renderUnitCalendar();
 });
+$("unitColourPicker").addEventListener("input", () => {
+  setUnitDraftColour($("unitColourPicker").value);
+});
+$("unitColourHex").addEventListener("input", () => {
+  const colour = normalizeHexColour($("unitColourHex").value);
+  if (colour) setUnitDraftColour(colour, false);
+  else renderUnitColourStatus();
+});
+$("unitColourHex").addEventListener("blur", () => {
+  if (!normalizeHexColour($("unitColourHex").value)) {
+    $("unitColourHex").value = unitDraft?.colour || "#FF5F8F";
+  }
+  renderUnitColourStatus();
+});
+$("nextUnitColourButton").addEventListener("click", () => {
+  const user = getActiveUser();
+  if (!unitDraft || !user) return;
+  setUnitDraftColour(suggestedUnitColour(user, unitDraft.classSpec, editingUnitId, unitDraft.colour));
+});
 
 function openUnitWizard(unitId = null) {
   const user = getActiveUser();
@@ -1901,7 +2151,7 @@ function openUnitWizard(unitId = null) {
   editingUnitId = unitId;
   const existing = unitId ? getUnitById(unitId, user) : null;
   unitDraft = existing ? structuredCloneSafe(existing) : normalizeUnit({
-    id: makeId("unit"), name: "", classSpec: { grades: [], subject: "" }, selectedCurriculum: [],
+    id: makeId("unit"), name: "", classSpec: { grades: [], subject: "" }, colour: "", selectedCurriculum: [],
     targetMinutes: 0, allocationMethod: "hours", startDate: "", lessons: [],
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
   });
@@ -1916,6 +2166,7 @@ function openUnitWizard(unitId = null) {
   $("unitPercentageInput").value = unitDraft.allocationMethod === "percentage" && unitDraft.allocationPercentage ? unitDraft.allocationPercentage : "";
   $("manualAvailableHoursInput").value = "";
   unitVisibleDate = defaultUnitMonth(user, unitDraft);
+  syncUnitColourControls();
   goToUnitStep(1);
   unitWizardDialog.showModal();
 }
@@ -2001,7 +2252,13 @@ function goToUnitStep(step) {
   $("unitWizardNextButton").textContent = step === 4 ? "Save Unit" : "Continue";
   if (step === 2) renderCurriculumBrowser();
   if (step === 3) updateAllocationSummary();
-  if (step === 4) renderUnitCalendar();
+  if (step === 4) {
+    if (unitDraft.startDate && !normalizeHexColour(unitDraft.colour)) {
+      unitDraft.colour = suggestedUnitColour(getActiveUser(), unitDraft.classSpec, editingUnitId);
+    }
+    syncUnitColourControls();
+    renderUnitCalendar();
+  }
 }
 
 function handleUnitWizardNext() {
@@ -2326,6 +2583,51 @@ function findUnitLessonsForOccurrence(user, occurrence) {
   return found;
 }
 
+function setUnitDraftColour(value, syncHex = true) {
+  if (!unitDraft) return;
+  const colour = normalizeHexColour(value);
+  if (!colour) return;
+  unitDraft.colour = colour;
+  $("unitColourPicker").value = colour;
+  if (syncHex) $("unitColourHex").value = colour;
+  $("unitColourLegendSwatch").style.background = colour;
+  renderUnitColourStatus();
+  renderUnitCalendar();
+}
+
+function syncUnitColourControls() {
+  if (!unitDraft) return;
+  const panel = $("unitColourPanel");
+  const legend = $("unitColourLegend");
+  const visible = Boolean(unitDraft.startDate);
+  panel.classList.toggle("hidden", !visible);
+  legend.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  if (!normalizeHexColour(unitDraft.colour)) {
+    unitDraft.colour = suggestedUnitColour(getActiveUser(), unitDraft.classSpec, editingUnitId);
+  }
+  $("unitColourPicker").value = unitDraft.colour;
+  $("unitColourHex").value = unitDraft.colour;
+  $("unitColourLegendSwatch").style.background = unitDraft.colour;
+  renderUnitColourStatus();
+}
+
+function renderUnitColourStatus() {
+  if (!unitDraft) return;
+  const status = $("unitColourStatus");
+  const typed = normalizeHexColour($("unitColourHex").value);
+  if (!typed) {
+    status.textContent = "Enter a six-digit hex colour such as #FF5F8F.";
+    status.className = "unit-colour-status colour-status-error";
+    return;
+  }
+  const duplicate = unitColourUsedByClass(getActiveUser(), unitDraft.classSpec, typed, editingUnitId);
+  status.textContent = duplicate
+    ? "That colour is already used by another unit in this grade/subject. Choose a different one."
+    : "Unique for this grade/subject.";
+  status.className = `unit-colour-status ${duplicate ? "colour-status-error" : "colour-status-ok"}`;
+}
+
 function defaultUnitMonth(user, unit) {
   if (unit?.startDate) {
     const date = parseLocalDate(unit.startDate);
@@ -2347,6 +2649,7 @@ function renderUnitCalendar() {
   grid.innerHTML = "";
   if (!unitVisibleDate) unitVisibleDate = defaultUnitMonth(user, unitDraft);
   $("unitMonthTitle").textContent = unitVisibleDate.toLocaleDateString("en-CA", { month: "long", year: "numeric" });
+  syncUnitColourControls();
 
   ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((weekday, index) => {
     const heading = document.createElement("div");
@@ -2373,39 +2676,64 @@ function renderUnitCalendar() {
     cell.type = "button";
     cell.className = "day unit-calendar-day";
     if (date.getDay() === 0 || date.getDay() === 6) cell.classList.add("weekend");
-    if (unitDraft.startDate === dateKey) cell.classList.add("unit-start-date");
+
     const number = document.createElement("span");
     number.className = "day-number";
     number.textContent = day;
     cell.appendChild(number);
 
     const exception = getExceptionForDate(user, dateKey);
+    const lessonsHere = unitDraft.lessons.filter(lesson => lesson.dateKey === dateKey);
+
     if (exception) {
-      cell.classList.add("unit-off-day");
+      cell.classList.add("unit-off-day", `unit-off-${exception.type.toLowerCase().replaceAll(" ", "-")}`);
       const label = document.createElement("span");
       label.className = "unit-calendar-note off-note";
-      label.textContent = exception.type === "PD Day" ? "PD" : exception.label || exception.type;
+      label.textContent = exception.label || exception.type;
       cell.appendChild(label);
+    } else if (lessonsHere.length) {
+      const colour = normalizeHexColour(unitDraft.colour) || "#8C6CFF";
+      cell.classList.add("unit-lesson-date");
+      cell.style.setProperty("--unit-colour", colour);
+      cell.style.setProperty("--unit-colour-soft", hexToRgba(colour, 0.22));
+      lessonsHere.forEach(lesson => {
+        const label = document.createElement("span");
+        label.className = "unit-calendar-note unit-lesson-note";
+        label.textContent = lessonDisplayTitle(lesson);
+        cell.appendChild(label);
+      });
     } else {
       const matching = dedupeClassOccurrences(getOccurrencesForDate(date, user).filter(item => classMatches(item.block, unitDraft.classSpec)));
       const available = matching.filter(item => !isOccurrenceAllocated(user, item, editingUnitId));
       const allocated = matching.length - available.length;
       if (available.length) {
-        const minutes = available.reduce((sum, item) => sum + durationMinutes(item.block.startTime, item.block.endTime), 0);
-        const label = document.createElement("span");
-        label.className = "unit-calendar-note available-note";
-        label.textContent = `${hoursLabel(minutes)} available`;
-        cell.appendChild(label);
+        cell.classList.add("unit-class-available");
+        const marker = document.createElement("span");
+        marker.className = "unit-calendar-note available-note";
+        marker.textContent = "Available";
+        cell.appendChild(marker);
       }
       if (allocated > 0) {
         const label = document.createElement("span");
         label.className = "unit-calendar-note allocated-note";
-        label.textContent = `${allocated} allocated`;
+        label.textContent = allocated === 1 ? "Used by another unit" : `${allocated} blocks already used`;
         cell.appendChild(label);
       }
     }
 
-    if (unitDraft.lessons.some(lesson => lesson.dateKey === dateKey)) cell.classList.add("unit-lesson-date");
+    if (unitDraft.startDate === dateKey) {
+      cell.classList.add("unit-start-date");
+      const colour = normalizeHexColour(unitDraft.colour) || "#8C6CFF";
+      cell.style.setProperty("--unit-colour", colour);
+      cell.style.setProperty("--unit-colour-soft", hexToRgba(colour, 0.22));
+      if (!lessonsHere.length) {
+        const startLabel = document.createElement("span");
+        startLabel.className = "unit-calendar-note unit-start-note";
+        startLabel.textContent = "Unit starts";
+        cell.appendChild(startLabel);
+      }
+    }
+
     cell.addEventListener("click", () => chooseUnitStartDate(dateKey));
     grid.appendChild(cell);
   }
@@ -2414,7 +2742,12 @@ function renderUnitCalendar() {
 
 function chooseUnitStartDate(dateKey) {
   unitDraft.startDate = dateKey;
-  const result = allocateLessons(unitDraft, getActiveUser(), dateKey, editingUnitId);
+  const user = getActiveUser();
+  if (!normalizeHexColour(unitDraft.colour) || unitColourUsedByClass(user, unitDraft.classSpec, unitDraft.colour, editingUnitId)) {
+    unitDraft.colour = suggestedUnitColour(user, unitDraft.classSpec, editingUnitId, unitDraft.colour);
+  }
+  syncUnitColourControls();
+  const result = allocateLessons(unitDraft, user, dateKey, editingUnitId);
   unitDraft.lessons = result.lessons;
   unitDraft.needsScheduleReview = result.scheduledMinutes < unitDraft.targetMinutes;
   renderUnitCalendar();
@@ -2446,6 +2779,7 @@ function allocateLessons(unit, user, startDateKey, excludeUnitId = null, preserv
           id: makeId("lesson"),
           sequence: lessons.length + 1,
           title: `Lesson ${lessons.length + 1}`,
+          customTitle: "",
           dateKey,
           startTime: occurrence.block.startTime,
           endTime: occurrence.block.endTime,
@@ -2474,38 +2808,29 @@ function allocateLessons(unit, user, startDateKey, excludeUnitId = null, preserv
 }
 
 function renderUnitLessonPreview() {
-  const container = $("unitLessonPreview");
   const summary = $("unitScheduleSummary");
-  container.innerHTML = "";
   if (!unitDraft.startDate) {
     summary.classList.add("hidden");
     return;
   }
   const scheduled = unitDraft.lessons.reduce((sum, lesson) => sum + lesson.durationMinutes, 0);
   const difference = scheduled - unitDraft.targetMinutes;
-  summary.innerHTML = `<strong>Start:</strong> ${escapeHTML(formatDate(unitDraft.startDate))} · <strong>Target:</strong> ${escapeHTML(hoursLabel(unitDraft.targetMinutes))} · <strong>Scheduled capacity:</strong> ${escapeHTML(hoursLabel(scheduled))}${difference > 0 ? ` · <strong>Surplus:</strong> ${escapeHTML(hoursLabel(difference))}` : difference < 0 ? ` · <strong>Short:</strong> ${escapeHTML(hoursLabel(Math.abs(difference)))}` : ""}`;
+  summary.innerHTML = `<strong>Target:</strong> ${escapeHTML(hoursLabel(unitDraft.targetMinutes))} · <strong>Scheduled capacity:</strong> ${escapeHTML(hoursLabel(scheduled))}${difference > 0 ? ` · <strong>Surplus:</strong> ${escapeHTML(hoursLabel(difference))}` : difference < 0 ? ` · <strong>Short:</strong> ${escapeHTML(hoursLabel(Math.abs(difference)))}` : ""}`;
   summary.classList.remove("hidden");
-
-  if (!unitDraft.lessons.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state-card";
-    empty.textContent = "No matching instructional blocks were found after this start date. You can save the unit as a draft, but it will need schedule review.";
-    container.appendChild(empty);
-    return;
-  }
-
-  unitDraft.lessons.forEach(lesson => {
-    const card = document.createElement("div");
-    card.className = "lesson-preview-card";
-    card.innerHTML = `<strong>${escapeHTML(lesson.title)}</strong><span>${escapeHTML(formatDate(lesson.dateKey))} · ${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))} · ${escapeHTML(hoursLabel(lesson.durationMinutes))}</span>`;
-    container.appendChild(card);
-  });
 }
 
 function saveUnitFromWizard() {
   const user = getActiveUser();
   if (!user || readOnlyMode) return;
   if (!unitDraft.startDate && !confirm("No unit start date has been selected. Save this unit as a draft without lesson placeholders?")) return;
+  if (unitDraft.startDate) {
+    const colour = normalizeHexColour(unitDraft.colour);
+    if (!colour) return alert("Choose a valid unit colour before saving.");
+    if (unitColourUsedByClass(user, unitDraft.classSpec, colour, editingUnitId)) {
+      return alert("That colour is already used by another unit in this grade/subject. Choose a different colour so units remain easy to distinguish.");
+    }
+    unitDraft.colour = colour;
+  }
 
   unitDraft.name = $("unitNameInput").value.trim() || unitDraft.name;
   unitDraft.selectedCurriculum = buildSelectedCurriculumSnapshots();
@@ -2561,6 +2886,7 @@ function openUnitDetail(unitId) {
   const unit = getUnitById(unitId, user);
   if (!unit) return;
   $("unitDetailHeading").textContent = unit.name;
+  $("unitDetailHeading").style.setProperty("--unit-colour", unit.colour || "#8C6CFF");
   $("unitDetailMeta").textContent = `${classLabel(unit.classSpec)}${unit.startDate ? ` · Starts ${formatDate(unit.startDate)}` : " · Draft"}`;
   $("editUnitButton").dataset.unitId = unit.id;
 
@@ -2607,7 +2933,7 @@ function openUnitDetail(unitId) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "unit-lesson-button";
-      button.innerHTML = `<strong>${escapeHTML(lesson.title)}</strong><span>${escapeHTML(formatLongDate(lesson.dateKey))}</span><small>${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))} · ${escapeHTML(hoursLabel(lesson.durationMinutes))} · Lesson plan not built</small>`;
+      button.innerHTML = `<strong>${escapeHTML(lessonDisplayTitle(lesson))}</strong><span>${escapeHTML(formatLongDate(lesson.dateKey))}</span><small>${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))} · ${escapeHTML(hoursLabel(lesson.durationMinutes))} · Lesson plan not built</small>`;
       button.addEventListener("click", () => openLessonPlaceholder(unit.id, lesson.id));
       lessonList.appendChild(button);
     });
@@ -2621,7 +2947,7 @@ function openLessonPlaceholder(unitId, lessonId) {
   const lesson = unit?.lessons.find(item => item.id === lessonId);
   if (!unit || !lesson) return;
   selectedLessonContext = { unitId, lessonId };
-  $("lessonPlaceholderHeading").textContent = `${lesson.title} — ${unit.name}`;
+  $("lessonPlaceholderHeading").textContent = `${lessonDisplayTitle(lesson)} — ${unit.name}`;
   $("lessonPlaceholderMeta").textContent = `${formatLongDate(lesson.dateKey)} · ${formatTime(lesson.startTime)}–${formatTime(lesson.endTime)}`;
   $("lessonPlaceholderDetails").innerHTML = `
     <div class="summary-card"><span class="summary-label">Class</span><strong>${escapeHTML(classLabel(unit.classSpec))}</strong></div>
@@ -2815,7 +3141,7 @@ function buildReadableExportHTML(user, { title, includeRestoreData, includeReadO
     ? `<script id="teacherHQBackupData" type="application/json">${safeJSONForScript(fullAppData)}</script>`
     : "";
   const embeddedReadOnly = includeReadOnlyData
-    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 3, user })}</script>`
+    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 4, user })}</script>`
     : "";
 
   return `<!DOCTYPE html>
@@ -2849,9 +3175,10 @@ function buildReadableTermsHTML(user) {
 function buildReadableExceptionsHTML(user) {
   return user.calendarExceptions.map(item => {
     const details = [];
+    if (item.description) details.push(item.description);
     if (item.location) details.push(`Location: ${item.location}`);
-    if (item.topic) details.push(`Topic: ${item.topic}`);
-    return `<div class="card"><strong>${escapeHTML(formatDate(item.date))} · ${escapeHTML(item.label || item.type)}</strong><p class="muted">${escapeHTML(item.type)}${details.length ? ` · ${escapeHTML(details.join(" · "))}` : ""}</p></div>`;
+    if (item.notes) details.push(`Notes: ${item.notes}`);
+    return `<div class="card"><strong>${escapeHTML(exceptionDateLabel(item))} · ${escapeHTML(item.label || item.type)}</strong><p class="muted">${escapeHTML(item.type)}${details.length ? ` · ${escapeHTML(details.join(" · "))}` : ""}</p></div>`;
   }).join("");
 }
 
@@ -2859,7 +3186,7 @@ function buildReadableUnitsHTML(user) {
   return user.units.map(unit => {
     const scheduled = unit.lessons.reduce((sum, lesson) => sum + lesson.durationMinutes, 0);
     const curriculum = unit.selectedCurriculum.map(record => `<li><strong>${escapeHTML(record.type)}:</strong> ${escapeHTML(record.text)}</li>`).join("");
-    const lessons = unit.lessons.map(lesson => `<div class="lesson"><strong>${escapeHTML(lesson.title)}</strong> · ${escapeHTML(formatDate(lesson.dateKey))} · ${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))}</div>`).join("");
+    const lessons = unit.lessons.map(lesson => `<div class="lesson" style="border-left-color:${escapeHTML(unit.colour || "#8C6CFF")};background:${escapeHTML(hexToRgba(unit.colour || "#8C6CFF", 0.10))}"><strong>${escapeHTML(lessonDisplayTitle(lesson))}</strong> · ${escapeHTML(formatDate(lesson.dateKey))} · ${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))}</div>`).join("");
     return `<section class="card"><strong>${escapeHTML(unit.name)}</strong><p class="muted">${escapeHTML(classLabel(unit.classSpec))} · Target ${escapeHTML(hoursLabel(unit.targetMinutes))} · Scheduled ${escapeHTML(hoursLabel(scheduled))}</p>${curriculum ? `<ul>${curriculum}</ul>` : '<p class="muted">No curriculum selected.</p>'}${lessons || '<p class="muted">No lesson placeholders.</p>'}</section>`;
   }).join("");
 }
@@ -2891,7 +3218,7 @@ function buildReadableMonthHTML(year, month, user) {
     const exception = getExceptionForDate(user, dateKey);
     let items = "";
     if (exception) {
-      items = `<div class="item off"><strong>${escapeHTML(exception.type)}</strong> ${escapeHTML(exception.label || "")}</div>`;
+      items = `<div class="item off"><strong>${escapeHTML(exception.label || exception.type)}</strong><br><span class="muted">${escapeHTML(exception.type)}</span></div>`;
     } else {
       const occurrences = getOccurrencesForDate(date, user);
       items = occurrences.map(occurrence => {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Teacher HQ</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
 
@@ -110,7 +110,7 @@
             <span><i class="legend-dot legend-red"></i> Unplanned</span>
             <span><i class="legend-dot legend-green"></i> Planned</span>
             <span><i class="legend-dot legend-yellow"></i> Conflict</span>
-            <span><i class="legend-dot legend-blue"></i> PD / reminder</span>
+            <span><i class="legend-dot legend-blue"></i> Days Off / PD</span>
             <span><i class="legend-dot legend-grey"></i> Past / weekend</span>
           </div>
 
@@ -268,24 +268,118 @@
     </div>
   </dialog>
 
-  <dialog id="daysOffDialog" class="modal large-modal">
+  <dialog id="daysOffDialog" class="modal extra-large-modal">
     <div class="modal-content">
-      <div class="modal-heading"><div><h2>Days Off &amp; PD Days</h2><p class="section-subtitle">These dates are removed from instructional availability.</p></div><button id="closeDaysOffButton" type="button" class="close-button" aria-label="Close">×</button></div>
-      <div class="days-off-layout">
-        <form id="dayOffForm" class="day-off-form">
+      <div class="modal-heading">
+        <div>
+          <h2>Days Off &amp; PD Days</h2>
+          <p class="section-subtitle">Add one day or a date range. These dates stay visible on the calendar, but instructional time and unit lessons are removed from them.</p>
+        </div>
+        <button id="closeDaysOffButton" type="button" class="close-button" aria-label="Close">×</button>
+      </div>
+
+      <div class="days-off-layout refined-days-off-layout">
+        <form id="dayOffForm" class="day-off-form refined-day-off-form">
           <input id="dayOffId" type="hidden" />
-          <div class="form-grid">
-            <label class="form-field"><span>Date</span><input id="dayOffDate" type="date" required /></label>
-            <label class="form-field"><span>Type</span><select id="dayOffType"><option value="Holiday">Holiday</option><option value="PD Day">PD Day</option><option value="Other">Other</option></select></label>
-            <label class="form-field"><span>Name / Label</span><input id="dayOffLabel" type="text" placeholder="Thanksgiving, Board PD Day..." /></label>
+          <input id="dayOffType" type="hidden" value="" />
+
+          <section class="day-off-question-card">
+            <p class="question-kicker">First</p>
+            <h3>Is this a PD Day?</h3>
+            <div class="choice-card-row two-choice-row">
+              <label class="choice-card">
+                <input id="dayOffPDYes" type="radio" name="dayOffIsPD" value="yes" />
+                <span><strong>Yes</strong><small>Professional development</small></span>
+              </label>
+              <label class="choice-card">
+                <input id="dayOffPDNo" type="radio" name="dayOffIsPD" value="no" />
+                <span><strong>No</strong><small>Holiday or another day off</small></span>
+              </label>
+            </div>
+          </section>
+
+          <section id="nonPDTypeFields" class="day-off-question-card hidden">
+            <p class="question-kicker">Type of day off</p>
+            <h3>Is it a holiday or something else?</h3>
+            <div class="choice-card-row two-choice-row">
+              <label class="choice-card">
+                <input id="dayOffHolidayChoice" type="radio" name="dayOffNonPDType" value="Holiday" />
+                <span><strong>Holiday</strong><small>School or statutory holiday</small></span>
+              </label>
+              <label class="choice-card">
+                <input id="dayOffOtherChoice" type="radio" name="dayOffNonPDType" value="Other" />
+                <span><strong>Other</strong><small>Closure, event, or another unavailable day</small></span>
+              </label>
+            </div>
+          </section>
+
+          <section id="dayOffDetailsFields" class="hidden">
+            <div class="date-range-panel">
+              <div class="date-range-heading">
+                <div>
+                  <p class="question-kicker">Dates</p>
+                  <h3>When does it happen?</h3>
+                </div>
+                <span class="date-range-hint">Use the same date twice for a single day.</span>
+              </div>
+              <div class="date-range-grid">
+                <label class="date-card">
+                  <span>Start Date</span>
+                  <input id="dayOffStartDate" type="date" required />
+                </label>
+                <div class="date-range-arrow">→</div>
+                <label class="date-card">
+                  <span>End Date</span>
+                  <input id="dayOffEndDate" type="date" required />
+                </label>
+              </div>
+            </div>
+
+            <div id="pdFields" class="day-off-detail-fields hidden">
+              <label class="form-field">
+                <span>Brief Description <small>(optional)</small></span>
+                <textarea id="pdDescription" rows="3" placeholder="Literacy workshop, assessment training, division planning..."></textarea>
+              </label>
+              <label class="form-field">
+                <span>Location <small>(optional)</small></span>
+                <div class="location-search-row">
+                  <input id="pdLocation" type="text" placeholder="School, district office, conference centre..." />
+                  <button id="searchPDLocationButton" type="button" class="secondary-button">Search Google Maps</button>
+                </div>
+                <small>The map search opens in a new tab; Teacher HQ does not send or store a Maps API key.</small>
+              </label>
+            </div>
+
+            <div id="nonPDFields" class="day-off-detail-fields hidden">
+              <label class="form-field">
+                <span>Title <small>(optional)</small></span>
+                <input id="dayOffLabel" type="text" list="holidayNameSuggestions" placeholder="Thanksgiving, School Closure, Sports Day..." />
+                <datalist id="holidayNameSuggestions"></datalist>
+                <small id="holidayNameHint" class="hidden">Previously saved holiday names will appear as suggestions.</small>
+              </label>
+              <label class="form-field">
+                <span>Brief Description <small>(optional)</small></span>
+                <textarea id="dayOffDescription" rows="3" placeholder="What is this day off for?"></textarea>
+              </label>
+              <label class="form-field">
+                <span>Notes <small>(optional)</small></span>
+                <textarea id="dayOffNotes" rows="3" placeholder="Anything useful to remember later..."></textarea>
+              </label>
+            </div>
+          </section>
+
+          <div class="modal-actions compact-actions">
+            <button id="cancelDayOffEditButton" type="button" class="secondary-button hidden">Cancel Edit</button>
+            <button id="saveDayOffButton" type="submit" class="primary-button">Save Days</button>
           </div>
-          <div id="pdFields" class="form-grid two-column-grid hidden">
-            <label class="form-field"><span>PD Location <small>(optional)</small></span><input id="pdLocation" type="text" placeholder="School, district office..." /></label>
-            <label class="form-field"><span>PD Topic / Purpose <small>(optional)</small></span><input id="pdTopic" type="text" placeholder="Literacy, assessment..." /></label>
-          </div>
-          <div class="modal-actions compact-actions"><button id="cancelDayOffEditButton" type="button" class="secondary-button hidden">Cancel Edit</button><button type="submit" class="primary-button">Save Date</button></div>
         </form>
-        <div><h3>Saved Dates</h3><div id="daysOffList" class="days-off-list"></div></div>
+
+        <div class="saved-days-panel">
+          <div class="section-heading-row compact-heading-row">
+            <div><h3>Saved Days</h3><p class="section-subtitle">Ranges stay grouped together here.</p></div>
+          </div>
+          <div id="daysOffList" class="days-off-list"></div>
+        </div>
       </div>
     </div>
   </dialog>
@@ -334,12 +428,36 @@
       </section>
 
       <section id="unitStep4" class="wizard-step hidden">
-        <div class="section-heading-row"><div><h3>Choose a Unit Start Date</h3><p class="section-subtitle">The calendar is empty of unit lessons until you choose a start date, but it already shows weekends, days off, and real class availability.</p></div><div class="calendar-controls"><button id="unitPreviousMonth" type="button" class="icon-button" aria-label="Previous month">←</button><button id="unitNextMonth" type="button" class="icon-button" aria-label="Next month">→</button></div></div>
+        <div class="section-heading-row unit-calendar-heading-row">
+          <div><h3>Choose a Unit Start Date</h3></div>
+          <div class="calendar-controls"><button id="unitPreviousMonth" type="button" class="icon-button" aria-label="Previous month">←</button><button id="unitNextMonth" type="button" class="icon-button" aria-label="Next month">→</button></div>
+        </div>
+
+        <div id="unitColourPanel" class="unit-colour-panel hidden">
+          <div class="unit-colour-copy">
+            <p class="question-kicker">Unit Colour</p>
+            <strong>Give this unit its own colour.</strong>
+            <span>Teacher HQ starts with a bright colour that is different from other units in this class. You can change it with the spectrum or a hex code.</span>
+          </div>
+          <div class="unit-colour-controls">
+            <label class="colour-spectrum-control" title="Open colour spectrum">
+              <input id="unitColourPicker" type="color" value="#ff5f8f" />
+            </label>
+            <label class="hex-colour-field"><span>Hex</span><input id="unitColourHex" type="text" maxlength="7" value="#FF5F8F" placeholder="#FF5F8F" /></label>
+            <button id="nextUnitColourButton" type="button" class="secondary-button">Try Another Fun Colour</button>
+          </div>
+          <p id="unitColourStatus" class="unit-colour-status"></p>
+        </div>
+
         <h4 id="unitMonthTitle" class="unit-month-title"></h4>
         <div id="unitCalendarGrid" class="calendar-grid unit-calendar-grid"></div>
-        <div class="unit-calendar-legend"><span><i class="legend-dot legend-available"></i> Class available</span><span><i class="legend-dot legend-off"></i> No school</span><span><i class="legend-dot legend-purple"></i> Already allocated</span></div>
+        <div class="unit-calendar-legend">
+          <span><i class="legend-dot legend-available"></i> Class available</span>
+          <span><i class="legend-dot legend-off"></i> Day off / PD</span>
+          <span><i class="legend-dot legend-purple"></i> Used by another unit</span>
+          <span id="unitColourLegend" class="hidden"><i id="unitColourLegendSwatch" class="legend-dot"></i> This unit</span>
+        </div>
         <div id="unitScheduleSummary" class="selection-summary hidden"></div>
-        <div id="unitLessonPreview" class="lesson-preview-list"></div>
       </section>
 
       <div class="wizard-actions"><button id="unitWizardBackButton" type="button" class="secondary-button">Back</button><button id="unitWizardNextButton" type="button" class="primary-button">Continue</button></div>
@@ -364,7 +482,7 @@
     </div>
   </dialog>
 
-  <script src="curriculum-data.js?v=1"></script>
-  <script src="app.js?v=4"></script>
+  <script src="curriculum-data.js?v=2"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
