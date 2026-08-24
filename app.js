@@ -1,11 +1,11 @@
 /* ============================================================
    TEACHER HQ
    Profiles + School Terms + schedule history + Days Off
-   Unit Planner + lesson placeholders + portable backup/read view
+   Unit Planner + assessments/rubrics + lesson placeholders + portable backup/read view
 ============================================================ */
 
-const STORAGE_KEY = "teacherHQData_v6";
-const LEGACY_STORAGE_KEYS = ["teacherHQData_v5", "teacherHQData_v4", "teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
+const STORAGE_KEY = "teacherHQData_v7";
+const LEGACY_STORAGE_KEYS = ["teacherHQData_v6", "teacherHQData_v5", "teacherHQData_v4", "teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
 
 const DEFAULT_GRADES = [
   "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
@@ -69,6 +69,9 @@ let workspaceResourceEditorId = null;
 let workspaceModalityEditorId = null;
 let workspaceIndigenousEditorId = null;
 let workspaceFieldTripEditorId = null;
+let workspaceAssessmentEditorId = null;
+let workspaceAssessmentCatalogOpen = false;
+let assessmentAutosaveTimer = null;
 
 /* ============================================================
    DOM REFERENCES
@@ -136,7 +139,7 @@ const lessonPlaceholderDialog = $("lessonPlaceholderDialog");
 ============================================================ */
 
 function defaultData() {
-  return { schemaVersion: 6, activeUserId: null, users: [] };
+  return { schemaVersion: 7, activeUserId: null, users: [] };
 }
 
 function loadData() {
@@ -159,7 +162,7 @@ function loadData() {
 
 function normalizeData(data) {
   const normalized = data && typeof data === "object" ? data : defaultData();
-  normalized.schemaVersion = 6;
+  normalized.schemaVersion = 7;
   if (!Array.isArray(normalized.users)) normalized.users = [];
   if (!("activeUserId" in normalized)) normalized.activeUserId = null;
   normalized.users = normalized.users.map(normalizeUser);
@@ -373,6 +376,80 @@ function normalizeFieldTrip(fieldTrip) {
   };
 }
 
+
+function normalizeAssessmentLink(link) {
+  return {
+    id: link?.id || makeId("assessment-link"),
+    title: String(link?.title || "").trim(),
+    url: String(link?.url || "").trim()
+  };
+}
+
+function normalizeOnePointRow(row) {
+  return {
+    id: row?.id || makeId("rubric-row"),
+    curriculumId: String(row?.curriculumId || ""),
+    description: String(row?.description || "")
+  };
+}
+
+function normalizeThreePointRow(row) {
+  return {
+    id: row?.id || makeId("rubric-row"),
+    curriculumId: String(row?.curriculumId || ""),
+    startingVerb: String(row?.startingVerb || ""),
+    startingText: String(row?.startingText || ""),
+    developingVerb: String(row?.developingVerb || ""),
+    developingText: String(row?.developingText || ""),
+    meetingVerb: String(row?.meetingVerb || ""),
+    meetingText: String(row?.meetingText || "")
+  };
+}
+
+function normalizeAssessment(assessment) {
+  const sourceRubric = assessment?.rubric && typeof assessment.rubric === "object"
+    ? assessment.rubric
+    : {};
+  const type = assessment?.type === "summative" ? "summative" : "formative";
+  const rubricType = ["none", "onePoint", "threePoint"].includes(sourceRubric.type)
+    ? sourceRubric.type
+    : "none";
+
+  return {
+    id: assessment?.id || makeId("assessment"),
+    title: String(assessment?.title ?? "").trim() || (assessment?.status === "draft" ? "" : "Untitled Assessment"),
+    description: String(assessment?.description || ""),
+    date: String(assessment?.date || ""),
+    type,
+    status: assessment?.status === "draft" ? "draft" : "active",
+    curriculumIds: Array.isArray(assessment?.curriculumIds)
+      ? [...new Set(assessment.curriculumIds.filter(Boolean))]
+      : [],
+    curriculumSnapshots: Array.isArray(assessment?.curriculumSnapshots)
+      ? assessment.curriculumSnapshots.map(record => structuredCloneSafe(record))
+      : [],
+    links: Array.isArray(assessment?.links)
+      ? assessment.links.map(normalizeAssessmentLink).filter(link => link.title || link.url)
+      : [],
+    rubric: {
+      type: rubricType,
+      onePointRows: Array.isArray(sourceRubric.onePointRows)
+        ? sourceRubric.onePointRows.map(normalizeOnePointRow)
+        : [],
+      threePointLabels: {
+        starting: String(sourceRubric.threePointLabels?.starting || "Starting"),
+        developing: String(sourceRubric.threePointLabels?.developing || "Developing"),
+        meeting: String(sourceRubric.threePointLabels?.meeting || "Meeting")
+      },
+      threePointRows: Array.isArray(sourceRubric.threePointRows)
+        ? sourceRubric.threePointRows.map(normalizeThreePointRow)
+        : []
+    },
+    createdAt: assessment?.createdAt || new Date().toISOString(),
+    updatedAt: assessment?.updatedAt || new Date().toISOString()
+  };
+}
+
 function normalizeUnit(unit) {
   const classSpec = unit.classSpec || {
     grades: Array.isArray(unit.grades) ? unit.grades : [],
@@ -450,6 +527,9 @@ function normalizeUnitWorkspace(workspace) {
       : [],
     indigenousVoiceResourceIds: Array.isArray(source.indigenousVoiceResourceIds)
       ? [...new Set(source.indigenousVoiceResourceIds)]
+      : [],
+    assessments: Array.isArray(source.assessments)
+      ? source.assessments.map(normalizeAssessment)
       : []
   };
 }
@@ -3642,6 +3722,8 @@ $("unitWorkspaceBackToCalendar").addEventListener("click", () => {
   workspaceModalityEditorId = null;
   workspaceIndigenousEditorId = null;
   workspaceFieldTripEditorId = null;
+  workspaceAssessmentEditorId = null;
+  workspaceAssessmentCatalogOpen = false;
   renderUnitWorkspace();
 });
 
@@ -3685,6 +3767,8 @@ $("unitWorkspaceNav").querySelectorAll("[data-unit-section]").forEach(button => 
     workspaceModalityEditorId = null;
     workspaceIndigenousEditorId = null;
     workspaceFieldTripEditorId = null;
+    workspaceAssessmentEditorId = null;
+    workspaceAssessmentCatalogOpen = false;
     renderUnitWorkspace();
   });
 });
@@ -3734,6 +3818,8 @@ function openUnitDetail(unitId) {
   workspaceModalityEditorId = null;
   workspaceIndigenousEditorId = null;
   workspaceFieldTripEditorId = null;
+  workspaceAssessmentEditorId = null;
+  workspaceAssessmentCatalogOpen = false;
 
   const baseDate = unit.startDate
     ? parseLocalDate(unit.startDate)
@@ -4048,6 +4134,7 @@ function renderUnitWorkspacePanel(unit, section) {
   if (section === "curriculum") return renderUnitWorkspaceCurriculum(unit, content);
   if (section === "simulation") return renderUnitWorkspaceSimulation(unit, content);
   if (section === "project") return renderUnitWorkspaceProject(unit, content);
+  if (section === "assessments") return renderUnitWorkspaceAssessments(unit, content);
   if (section === "resources") return renderUnitWorkspaceResources(unit, content);
   if (section === "fieldTrips") return renderUnitWorkspaceFieldTrips(unit, content);
   if (section === "learningModalities") return renderUnitWorkspaceLearningModalities(unit, content);
@@ -4061,11 +4148,9 @@ function renderUnitWorkspacePanel(unit, section) {
   title.textContent = `${labels[section] || "This section"} is intentionally waiting for its dedicated release.`;
 
   const copy = document.createElement("p");
-  copy.textContent = section === "assessments"
-    ? "Assessment creation, assessment histories, one-point and three-point rubrics arrive in Release C."
-    : section === "cognitiveTempo"
-      ? "Cognitive Tempo will be calculated after assessments are attached to lessons in the assessment and lesson releases."
-      : "The data structure and Unit Workspace are ready, but this section depends on source data or the Lesson system that comes later.";
+  copy.textContent = section === "cognitiveTempo"
+    ? "Cognitive Tempo will be calculated after assessments are attached to lessons in the Lesson system release."
+    : "The data structure and Unit Workspace are ready, but this section depends on source data or the Lesson system that comes later.";
 
   empty.append(title, copy);
   content.appendChild(empty);
@@ -5610,6 +5695,766 @@ function openLessonPlaceholder(unitId, lessonId) {
   lessonPlaceholderDialog.showModal();
 }
 
+
+/* ============================================================
+   UNIT WORKSPACE — ASSESSMENTS + RUBRICS
+============================================================ */
+
+function getAssessmentById(unit, assessmentId) {
+  return (unit?.workspace?.assessments || []).find(item => item.id === assessmentId) || null;
+}
+
+function assessmentTypeLabel(type) {
+  return type === "summative" ? "Summative" : "Formative";
+}
+
+function curriculumRecordForAssessment(unit, assessment, curriculumId) {
+  const pools = [
+    ...(assessment?.curriculumSnapshots || []),
+    ...(unit?.curriculumLinks?.working || []),
+    ...CURRICULUM
+  ];
+  return pools.find(record => record.id === curriculumId) || null;
+}
+
+function curriculumReference(record) {
+  if (!record) return "CURR";
+  const gradeMatch = String(record.grade || "").match(/\d+/);
+  const grade = gradeMatch ? `G${gradeMatch[0]}` : String(record.grade || "G").replace(/\s+/g, "").toUpperCase();
+  const subject = String(record.subject || "SUBJ").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 5) || "SUBJ";
+  const oi = String(record.organizingIdea || "OI").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 5) || "OI";
+  const type = record.type === "Skills & Procedures" ? "SP" : record.type === "Understanding" ? "U" : "K";
+  const idTail = String(record.id || "item").split("-").slice(-2).join("-").toUpperCase();
+  return `${grade}-${subject}-${oi}-${type}-${idTail}`;
+}
+
+function assessmentHistoryForCurriculum(unit, curriculumId, type = null) {
+  return (unit?.workspace?.assessments || [])
+    .filter(assessment =>
+      assessment.status !== "draft" &&
+      assessment.curriculumIds.includes(curriculumId) &&
+      (!type || assessment.type === type)
+    )
+    .slice()
+    .sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99") || a.title.localeCompare(b.title));
+}
+
+function makeAssessmentHistoryDialog(unit, record, type) {
+  document.getElementById("assessmentHistoryDialog")?.remove();
+  const history = assessmentHistoryForCurriculum(unit, record.id, type);
+  const dialog = document.createElement("dialog");
+  dialog.id = "assessmentHistoryDialog";
+  dialog.className = "modal assessment-history-dialog";
+  dialog.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-heading">
+        <div><p class="small-label">Assessment History</p><h2>${escapeHTML(assessmentTypeLabel(type))}</h2></div>
+        <button type="button" class="close-button" data-history-close aria-label="Close">×</button>
+      </div>
+      <div class="assessment-history-objective">
+        <small>${escapeHTML(curriculumReference(record))}</small>
+        <p>${escapeHTML(record.text)}</p>
+      </div>
+      <div class="assessment-history-list">
+        ${history.length ? history.map(item => `
+          <button type="button" class="assessment-history-item" data-history-assessment="${escapeHTML(item.id)}">
+            <span>${escapeHTML(item.date ? formatDate(item.date) : "No date")}</span>
+            <strong>${escapeHTML(item.title)}</strong>
+            <small>${escapeHTML(assessmentTypeLabel(item.type))}</small>
+          </button>`).join("") : '<p class="empty-state">No assessments recorded for this curriculum objective yet.</p>'}
+      </div>
+    </div>`;
+  document.body.appendChild(dialog);
+  dialog.querySelector("[data-history-close]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  dialog.querySelectorAll("[data-history-assessment]").forEach(button => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.historyAssessment;
+      dialog.close();
+      workspaceAssessmentEditorId = id;
+      workspaceAssessmentCatalogOpen = false;
+      renderUnitWorkspacePanel(unit, "assessments");
+    });
+  });
+  dialog.showModal();
+}
+
+function renderUnitWorkspaceAssessments(unit, container) {
+  unit.workspace.assessments = Array.isArray(unit.workspace.assessments)
+    ? unit.workspace.assessments.map(normalizeAssessment)
+    : [];
+
+  if (workspaceAssessmentEditorId) {
+    renderAssessmentEditor(unit, container, workspaceAssessmentEditorId);
+    return;
+  }
+
+  const top = document.createElement("div");
+  top.className = "section-heading-row compact-heading-row assessment-section-heading";
+  top.innerHTML = `
+    <div>
+      <h4>Assessments</h4>
+      <p class="section-subtitle">Track formative and summative evidence against the Unit's Working Curriculum, then build printable one-point or three-point rubrics.</p>
+    </div>`;
+
+  if (!readOnlyMode) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "primary-button";
+    add.textContent = "+ New Assessment";
+    add.addEventListener("click", () => {
+      const draft = blankAssessment(unit);
+      unit.workspace.assessments.push(draft);
+      autosaveUnit(unit);
+      workspaceAssessmentEditorId = draft.id;
+      workspaceAssessmentCatalogOpen = false;
+      renderUnitWorkspacePanel(unit, "assessments");
+    });
+    top.appendChild(add);
+  }
+  container.appendChild(top);
+
+  const projectSkillIds = new Set(unit.workspace.project?.skillIds || []);
+  if (projectSkillIds.size) {
+    const projectNote = document.createElement("div");
+    projectNote.className = "assessment-project-note";
+    projectNote.innerHTML = `<span>Project curriculum</span><strong>${projectSkillIds.size} Skills & Procedures</strong><p>Objectives selected in the Unit Project are marked below so they are easy to find when designing assessments.</p>`;
+    container.appendChild(projectNote);
+  }
+
+  const working = unit.curriculumLinks?.working || [];
+  const tracker = document.createElement("section");
+  tracker.className = "assessment-tracker-section";
+  tracker.innerHTML = `<div class="workspace-subheading"><div><p class="small-label">Curriculum Evidence</p><h4>Assessment Tracker</h4></div></div>`;
+
+  if (!working.length) {
+    tracker.innerHTML += '<p class="empty-state">No Working Curriculum is selected for this Unit yet.</p>';
+  } else {
+    const list = document.createElement("div");
+    list.className = "assessment-curriculum-tracker";
+    working.forEach(record => {
+      const formative = assessmentHistoryForCurriculum(unit, record.id, "formative");
+      const summative = assessmentHistoryForCurriculum(unit, record.id, "summative");
+      const card = document.createElement("article");
+      card.className = `assessment-tracker-card ${projectSkillIds.has(record.id) ? "project-linked" : ""}`;
+
+      const copy = document.createElement("div");
+      copy.className = "assessment-tracker-copy";
+      copy.innerHTML = `<small>${escapeHTML(curriculumReference(record))} · ${escapeHTML(record.type)} · ${escapeHTML(record.organizingIdea)}</small>`;
+      copy.appendChild(makeCurriculumText(record, getActiveUser()));
+      if (projectSkillIds.has(record.id)) {
+        const badge = document.createElement("span");
+        badge.className = "assessment-project-badge";
+        badge.textContent = "Project";
+        copy.appendChild(badge);
+      }
+
+      const counts = document.createElement("div");
+      counts.className = "assessment-tracker-counts";
+      [["formative", formative], ["summative", summative]].forEach(([type, history]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `assessment-count assessment-count-${type}`;
+        button.innerHTML = `<strong>${history.length}</strong><span>${type === "formative" ? "Formative" : "Summative"}</span>`;
+        button.addEventListener("click", () => makeAssessmentHistoryDialog(unit, record, type));
+        counts.appendChild(button);
+      });
+      card.append(copy, counts);
+      list.appendChild(card);
+    });
+    tracker.appendChild(list);
+  }
+  container.appendChild(tracker);
+
+  const saved = document.createElement("section");
+  saved.className = "saved-assessments-section";
+  saved.innerHTML = `<div class="workspace-subheading"><div><p class="small-label">Saved Work</p><h4>Assessments in This Unit</h4></div></div>`;
+
+  if (!unit.workspace.assessments.length) {
+    saved.innerHTML += '<p class="empty-state">No assessments have been created yet.</p>';
+  } else {
+    const list = document.createElement("div");
+    list.className = "saved-assessment-list";
+    unit.workspace.assessments
+      .slice()
+      .sort((a, b) => (a.date || "9999-99-99").localeCompare(b.date || "9999-99-99"))
+      .forEach(assessment => {
+        const card = document.createElement("article");
+        card.className = `saved-assessment-card assessment-${assessment.type} ${assessment.status === "draft" ? "assessment-draft" : ""}`;
+        const rubricLabel = assessment.rubric.type === "onePoint" ? "1-point rubric" : assessment.rubric.type === "threePoint" ? "3-point rubric" : "No rubric";
+        card.innerHTML = `
+          <div class="saved-assessment-copy">
+            <div class="saved-assessment-meta">${assessment.status === "draft" ? '<span class="draft-pill">Draft</span>' : ""}<span>${escapeHTML(assessmentTypeLabel(assessment.type))}</span><span>${escapeHTML(assessment.date ? formatDate(assessment.date) : "No date")}</span><span>${escapeHTML(rubricLabel)}</span></div>
+            <strong>${escapeHTML(assessment.title || "Untitled Assessment")}</strong>
+            <p>${escapeHTML(assessment.description || "No description yet.")}</p>
+            <small>${assessment.curriculumIds.length} curriculum objective${assessment.curriculumIds.length === 1 ? "" : "s"}</small>
+          </div>`;
+        const actions = document.createElement("div");
+        actions.className = "saved-assessment-actions";
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "secondary-button";
+        open.textContent = readOnlyMode ? "View" : "Edit";
+        open.addEventListener("click", () => {
+          workspaceAssessmentEditorId = assessment.id;
+          workspaceAssessmentCatalogOpen = false;
+          renderUnitWorkspacePanel(unit, "assessments");
+        });
+        actions.appendChild(open);
+        if (assessment.rubric.type !== "none") {
+          const print = document.createElement("button");
+          print.type = "button";
+          print.className = "text-button";
+          print.textContent = "Print Rubric";
+          print.addEventListener("click", () => printAssessmentRubric(unit, assessment));
+          actions.appendChild(print);
+        }
+        card.appendChild(actions);
+        list.appendChild(card);
+      });
+    saved.appendChild(list);
+  }
+  container.appendChild(saved);
+}
+
+function blankAssessment(unit) {
+  return normalizeAssessment({
+    id: makeId("assessment"),
+    title: "",
+    description: "",
+    date: "",
+    type: "formative",
+    status: "draft",
+    curriculumIds: [],
+    curriculumSnapshots: [],
+    links: [],
+    rubric: { type: "none", onePointRows: [], threePointRows: [] },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+}
+
+function renderAssessmentEditor(unit, container, assessmentId) {
+  const existing = assessmentId === "__new__" ? null : getAssessmentById(unit, assessmentId);
+  const assessment = existing || blankAssessment(unit);
+  const working = unit.curriculumLinks?.working || [];
+  const selectedIds = new Set(assessment.curriculumIds || []);
+  const projectIds = new Set(unit.workspace.project?.skillIds || []);
+
+  const heading = document.createElement("div");
+  heading.className = "workspace-subpage-heading assessment-editor-heading";
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "text-button workspace-back-button";
+  back.textContent = "← Assessments";
+  back.addEventListener("click", () => {
+    workspaceAssessmentEditorId = null;
+    workspaceAssessmentCatalogOpen = false;
+    renderUnitWorkspacePanel(unit, "assessments");
+  });
+  const copy = document.createElement("div");
+  copy.innerHTML = `<p class="small-label">${existing ? "Edit Assessment" : "New Assessment"}</p><h4>${escapeHTML(assessment.title || "Untitled Assessment")}</h4>`;
+  heading.append(back, copy);
+  container.appendChild(heading);
+
+  const editor = document.createElement("form");
+  editor.className = "assessment-editor-form";
+  editor.innerHTML = `
+    <section class="workspace-editor-card assessment-basics-card">
+      <div class="form-grid assessment-basics-grid">
+        <label class="form-field"><span>Title <small>(required)</small></span><input data-assessment-title type="text" maxlength="140" value="${escapeHTML(assessment.title)}" placeholder="e.g., Place Value Exit Ticket" /></label>
+        <label class="form-field"><span>Date <small>(required)</small></span><input data-assessment-date type="date" value="${escapeHTML(assessment.date)}" /></label>
+        <label class="form-field"><span>Assessment Type</span><select data-assessment-type><option value="formative" ${assessment.type === "formative" ? "selected" : ""}>Formative</option><option value="summative" ${assessment.type === "summative" ? "selected" : ""}>Summative</option></select></label>
+      </div>
+      <label class="form-field"><span>Description</span><textarea data-assessment-description rows="5" placeholder="Describe the task, evidence students will provide, or how it will be used.">${escapeHTML(assessment.description)}</textarea></label>
+    </section>
+
+    <section class="workspace-editor-card assessment-curriculum-card">
+      <div class="workspace-editor-heading">
+        <div><p class="small-label">Curriculum</p><h4>What does this assessment assess?</h4><p class="section-subtitle">Curriculum already in Working Curriculum is shown first. Anything added from the catalogue is automatically added to Working Curriculum too.</p></div>
+        ${readOnlyMode ? "" : '<button type="button" class="secondary-button" data-assessment-add-curriculum>+ Find Another Objective</button>'}
+      </div>
+      <div class="assessment-curriculum-selection"></div>
+      <div class="assessment-catalog-area ${workspaceAssessmentCatalogOpen ? "" : "hidden"}"></div>
+    </section>
+
+    <section class="workspace-editor-card assessment-links-card">
+      <div class="workspace-editor-heading"><div><p class="small-label">Supporting Files</p><h4>Links & Attachments</h4><p class="section-subtitle">To keep Teacher HQ free and backup-safe, files are linked rather than stored inside browser data.</p></div>${readOnlyMode ? "" : '<button type="button" class="secondary-button" data-assessment-add-link>+ Add Link</button>'}</div>
+      <div class="assessment-link-list"></div>
+    </section>
+
+    <section class="workspace-editor-card rubric-maker-card">
+      <div class="workspace-editor-heading"><div><p class="small-label">Rubric Maker</p><h4>Rubric</h4><p class="section-subtitle">Choose no rubric, a one-point rubric, or a three-point rubric for this assessment.</p></div></div>
+      <div class="rubric-type-picker segmented-choice" role="group" aria-label="Rubric type">
+        <button type="button" data-rubric-type="none" class="${assessment.rubric.type === "none" ? "selected" : ""}">No Rubric</button>
+        <button type="button" data-rubric-type="onePoint" class="${assessment.rubric.type === "onePoint" ? "selected" : ""}">1-Point</button>
+        <button type="button" data-rubric-type="threePoint" class="${assessment.rubric.type === "threePoint" ? "selected" : ""}">3-Point</button>
+      </div>
+      <div class="rubric-editor-area"></div>
+    </section>
+
+    <div class="assessment-editor-actions modal-actions compact-actions">
+      ${existing && !readOnlyMode ? '<button type="button" class="danger-text-button" data-assessment-delete>Delete Assessment</button>' : ""}
+      ${readOnlyMode ? "" : '<button type="submit" class="primary-button">Done</button>'}
+    </div>`;
+  container.appendChild(editor);
+
+  const renderSelectedCurriculum = () => {
+    const target = editor.querySelector(".assessment-curriculum-selection");
+    target.innerHTML = "";
+    const latestWorking = unit.curriculumLinks?.working || [];
+    if (!latestWorking.length) {
+      target.innerHTML = '<p class="empty-state">No Working Curriculum yet. Use “Find Another Objective” to add curriculum to this Unit and assessment.</p>';
+      return;
+    }
+    latestWorking.forEach(record => {
+      const label = document.createElement("label");
+      label.className = `assessment-curriculum-choice ${selectedIds.has(record.id) ? "selected" : ""} ${projectIds.has(record.id) ? "project-linked" : ""}`;
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = selectedIds.has(record.id);
+      checkbox.disabled = readOnlyMode;
+      const copy = document.createElement("div");
+      copy.className = "assessment-curriculum-choice-copy";
+      copy.innerHTML = `<small>${escapeHTML(curriculumReference(record))} · ${escapeHTML(record.type)}${projectIds.has(record.id) ? ' · <b>Project</b>' : ""}</small>`;
+      copy.appendChild(makeCurriculumText(record, getActiveUser()));
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) selectedIds.add(record.id);
+        else selectedIds.delete(record.id);
+        label.classList.toggle("selected", checkbox.checked);
+        persistAssessmentDraft();
+        renderRubricEditor();
+      });
+      label.append(checkbox, copy);
+      target.appendChild(label);
+    });
+  };
+
+  const renderCatalog = () => {
+    const area = editor.querySelector(".assessment-catalog-area");
+    area.classList.toggle("hidden", !workspaceAssessmentCatalogOpen);
+    if (!workspaceAssessmentCatalogOpen) return;
+    area.innerHTML = `
+      <div class="assessment-catalog-search"><label class="form-field"><span>Search loaded curriculum</span><input type="search" data-assessment-catalog-search placeholder="Search wording, organizing idea, guiding question..." /></label><button type="button" class="text-button" data-assessment-catalog-close>Close</button></div>
+      <div class="assessment-catalog-results"></div>`;
+    const search = area.querySelector("[data-assessment-catalog-search]");
+    const results = area.querySelector(".assessment-catalog-results");
+    const classRecords = getCurriculumForClass(unit.classSpec);
+    const workingIds = new Set((unit.curriculumLinks?.working || []).map(record => record.id));
+
+    const paint = () => {
+      const query = search.value.trim().toLowerCase();
+      const matches = classRecords.filter(record => {
+        if (!query) return true;
+        return [record.text, record.organizingIdea, record.guidingQuestion, record.learningOutcome, record.type]
+          .some(value => String(value || "").toLowerCase().includes(query));
+      }).slice(0, 80);
+      results.innerHTML = "";
+      if (!matches.length) {
+        results.innerHTML = '<p class="empty-state">No matching loaded curriculum.</p>';
+        return;
+      }
+      matches.forEach(record => {
+        const row = document.createElement("article");
+        row.className = "assessment-catalog-result";
+        const copy = document.createElement("div");
+        copy.innerHTML = `<small>${escapeHTML(record.organizingIdea)} · ${escapeHTML(record.type)}</small><p>${escapeHTML(record.text)}</p>`;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = workingIds.has(record.id) ? "secondary-button" : "primary-button";
+        button.textContent = workingIds.has(record.id) ? (selectedIds.has(record.id) ? "Selected" : "Select") : "Add + Select";
+        button.disabled = selectedIds.has(record.id);
+        button.addEventListener("click", () => {
+          if (!workingIds.has(record.id)) {
+            const snapshot = enrichCurriculumSnapshot(record, getActiveUser());
+            unit.curriculumLinks.working.push(snapshot);
+            unit.selectedCurriculum = unit.curriculumLinks.working.map(item => structuredCloneSafe(item));
+            workingIds.add(record.id);
+          }
+          selectedIds.add(record.id);
+          persistAssessmentDraft();
+          renderSelectedCurriculum();
+          renderRubricEditor();
+          paint();
+        });
+        row.append(copy, button);
+        results.appendChild(row);
+      });
+    };
+    search.addEventListener("input", paint);
+    area.querySelector("[data-assessment-catalog-close]").addEventListener("click", () => {
+      workspaceAssessmentCatalogOpen = false;
+      renderCatalog();
+    });
+    paint();
+  };
+
+  const renderLinks = () => {
+    const list = editor.querySelector(".assessment-link-list");
+    list.innerHTML = "";
+    if (!assessment.links.length) list.innerHTML = '<p class="empty-state">No supporting links added.</p>';
+    assessment.links.forEach((link, index) => {
+      const row = document.createElement("div");
+      row.className = "assessment-link-row";
+      row.innerHTML = `
+        <label class="form-field"><span>Label</span><input data-link-title type="text" value="${escapeHTML(link.title)}" placeholder="Worksheet, Drive folder, student handout..." /></label>
+        <label class="form-field"><span>URL</span><input data-link-url type="url" value="${escapeHTML(link.url)}" placeholder="https://..." /></label>
+        ${readOnlyMode ? "" : '<button type="button" class="danger-text-button" data-link-remove>Remove</button>'}`;
+      const title = row.querySelector("[data-link-title]");
+      const url = row.querySelector("[data-link-url]");
+      [title, url].forEach(input => input.disabled = readOnlyMode);
+      title.addEventListener("input", () => link.title = title.value);
+      url.addEventListener("input", () => link.url = url.value);
+      row.querySelector("[data-link-remove]")?.addEventListener("click", () => {
+        assessment.links.splice(index, 1);
+        persistAssessmentDraft();
+        renderLinks();
+      });
+      list.appendChild(row);
+    });
+  };
+
+  const selectedRecords = () => {
+    const snapshots = [];
+    selectedIds.forEach(id => {
+      const record = (unit.curriculumLinks?.working || []).find(item => item.id === id) || CURRICULUM.find(item => item.id === id);
+      if (record) snapshots.push(record);
+    });
+    return snapshots;
+  };
+
+  const makeCurriculumOptions = (selectedValue = "") => {
+    const records = selectedRecords();
+    return `<option value="">Select curriculum objective</option>` + records.map(record =>
+      `<option value="${escapeHTML(record.id)}" ${record.id === selectedValue ? "selected" : ""}>${escapeHTML(curriculumReference(record))} · ${escapeHTML(record.text.slice(0, 105))}${record.text.length > 105 ? "…" : ""}</option>`
+    ).join("");
+  };
+
+  const renderOnePoint = target => {
+    target.innerHTML = `
+      <div class="rubric-editor-heading"><div><h5>One-Point Rubric</h5><p>Each row connects to a selected curriculum objective. You can use the same objective more than once.</p></div>${readOnlyMode ? "" : '<button type="button" class="secondary-button" data-onepoint-add>+ Add Row</button>'}</div>
+      <div class="rubric-row-editor-list"></div>
+      <div class="rubric-print-actions"><button type="button" class="secondary-button" data-rubric-print>Print / Save PDF</button></div>`;
+    const list = target.querySelector(".rubric-row-editor-list");
+    if (!assessment.rubric.onePointRows.length) list.innerHTML = '<p class="empty-state">Add a row for each piece of evidence you want represented on the rubric.</p>';
+    assessment.rubric.onePointRows.forEach((row, index) => {
+      const card = document.createElement("article");
+      card.className = "rubric-row-editor";
+      card.innerHTML = `
+        <div class="rubric-row-number">${index + 1}</div>
+        <label class="form-field"><span>Curriculum Objective</span><select data-one-curriculum>${makeCurriculumOptions(row.curriculumId)}</select></label>
+        <label class="form-field rubric-description-field"><span>What we want</span><textarea data-one-description rows="4" placeholder="Describe what successful evidence of this objective looks like in this assessment.">${escapeHTML(row.description)}</textarea></label>
+        ${readOnlyMode ? "" : '<button type="button" class="danger-text-button" data-one-remove>Remove</button>'}`;
+      const select = card.querySelector("[data-one-curriculum]");
+      const description = card.querySelector("[data-one-description]");
+      [select, description].forEach(input => input.disabled = readOnlyMode);
+      select.addEventListener("change", () => row.curriculumId = select.value);
+      description.addEventListener("input", () => row.description = description.value);
+      card.querySelector("[data-one-remove]")?.addEventListener("click", () => {
+        assessment.rubric.onePointRows.splice(index, 1);
+        persistAssessmentDraft();
+        renderRubricEditor();
+      });
+      list.appendChild(card);
+    });
+    target.querySelector("[data-onepoint-add]")?.addEventListener("click", () => {
+      assessment.rubric.onePointRows.push(normalizeOnePointRow({ curriculumId: selectedRecords()[0]?.id || "" }));
+      persistAssessmentDraft();
+      renderRubricEditor();
+    });
+    target.querySelector("[data-rubric-print]").addEventListener("click", () => printAssessmentRubric(unit, assessment));
+  };
+
+  const verbOptions = (levelNames, selected = "") => {
+    const verbs = [];
+    levelNames.forEach(level => {
+      (BLOOM_REFERENCE.levels?.[level] || []).forEach(verb => {
+        const cleaned = String(verb || "").trim();
+        if (cleaned && !verbs.some(item => item.toLowerCase() === cleaned.toLowerCase())) verbs.push(cleaned);
+      });
+    });
+    return `<option value="">Choose a verb</option>` + verbs.map(verb => `<option value="${escapeHTML(verb)}" ${verb.toLowerCase() === String(selected || "").toLowerCase() ? "selected" : ""}>${escapeHTML(verb)}</option>`).join("");
+  };
+
+  const threePointVerbSets = record => {
+    if (!record || record.type !== "Skills & Procedures") return { starting: [], developing: [], meeting: [] };
+    const analysis = analyzeCurriculumVerb(record.text);
+    const level = getCurriculumBloomLevel(record, getActiveUser(), analysis);
+    const band = getBloomBand(level);
+    if (band === "black") {
+      return { starting: ["Remember", "Understand"], developing: ["Apply", "Analyze"], meeting: [level] };
+    }
+    if (band === "blue") {
+      return { starting: ["Remember"], developing: ["Understand"], meeting: [level] };
+    }
+    return { starting: [], developing: [], meeting: [] };
+  };
+
+  const renderThreePoint = target => {
+    const labels = assessment.rubric.threePointLabels;
+    target.innerHTML = `
+      <div class="rubric-editor-heading"><div><h5>Three-Point Rubric</h5><p>Default progression is Starting → Developing → Meeting. Rename the headings to fit the simulation or assessment context.</p></div>${readOnlyMode ? "" : '<button type="button" class="secondary-button" data-threepoint-add>+ Add Row</button>'}</div>
+      <div class="rubric-label-editor">
+        <label class="form-field"><span>Starting label</span><input data-label-starting type="text" value="${escapeHTML(labels.starting)}" /></label>
+        <label class="form-field"><span>Developing label</span><input data-label-developing type="text" value="${escapeHTML(labels.developing)}" /></label>
+        <label class="form-field"><span>Meeting label</span><input data-label-meeting type="text" value="${escapeHTML(labels.meeting)}" /></label>
+      </div>
+      <div class="three-point-rubric-rows"></div>
+      <div class="rubric-print-actions"><button type="button" class="secondary-button" data-rubric-print>Print / Save PDF</button></div>`;
+    [["starting", "[data-label-starting]"], ["developing", "[data-label-developing]"], ["meeting", "[data-label-meeting]"]].forEach(([key, selector]) => {
+      const input = target.querySelector(selector);
+      input.disabled = readOnlyMode;
+      input.addEventListener("input", () => labels[key] = input.value);
+    });
+    const list = target.querySelector(".three-point-rubric-rows");
+    if (!assessment.rubric.threePointRows.length) list.innerHTML = '<p class="empty-state">Add a row, then describe evidence at each level.</p>';
+    assessment.rubric.threePointRows.forEach((row, index) => {
+      const record = curriculumRecordForAssessment(unit, assessment, row.curriculumId) || selectedRecords().find(item => item.id === row.curriculumId);
+      const sets = threePointVerbSets(record);
+      const analysis = record?.type === "Skills & Procedures" ? analyzeCurriculumVerb(record.text) : null;
+      const level = record ? getCurriculumBloomLevel(record, getActiveUser(), analysis) : "";
+      const originalVerb = analysis?.keyVerb || "";
+      if (!row.meetingVerb && originalVerb && getBloomBand(level) !== "green") row.meetingVerb = originalVerb;
+      const card = document.createElement("article");
+      card.className = "three-point-rubric-row-editor";
+      card.innerHTML = `
+        <div class="three-point-row-heading"><span>${index + 1}</span><label class="form-field"><span>Curriculum Objective</span><select data-three-curriculum>${makeCurriculumOptions(row.curriculumId)}</select></label>${readOnlyMode ? "" : '<button type="button" class="danger-text-button" data-three-remove>Remove</button>'}</div>
+        ${record ? `<div class="three-point-objective-preview"><small>${escapeHTML(curriculumReference(record))}${level ? ` · ${escapeHTML(level)}` : ""}</small><p>${escapeHTML(record.text)}</p></div>` : ""}
+        <div class="three-point-criteria-grid">
+          <div class="three-point-criterion criterion-starting"><strong>${escapeHTML(labels.starting)}</strong>${sets.starting.length ? `<label><span>Suggested verb</span><select data-three-starting-verb>${verbOptions(sets.starting, row.startingVerb)}</select></label>` : '<small>No automatic verb suggestion for this objective.</small>'}<textarea data-three-starting-text rows="5" placeholder="Describe the Starting evidence...">${escapeHTML(row.startingText)}</textarea></div>
+          <div class="three-point-criterion criterion-developing"><strong>${escapeHTML(labels.developing)}</strong>${sets.developing.length ? `<label><span>Suggested verb</span><select data-three-developing-verb>${verbOptions(sets.developing, row.developingVerb)}</select></label>` : '<small>No automatic verb suggestion for this objective.</small>'}<textarea data-three-developing-text rows="5" placeholder="Describe the Developing evidence...">${escapeHTML(row.developingText)}</textarea></div>
+          <div class="three-point-criterion criterion-meeting"><strong>${escapeHTML(labels.meeting)}</strong>${originalVerb && getBloomBand(level) !== "green" ? `<label><span>Curriculum verb</span><input data-three-meeting-verb type="text" value="${escapeHTML(row.meetingVerb || originalVerb)}" /></label>` : '<small>Write the criterion directly; no progression suggestion is imposed.</small>'}<textarea data-three-meeting-text rows="5" placeholder="Describe the Meeting evidence...">${escapeHTML(row.meetingText)}</textarea></div>
+        </div>`;
+      const curriculumSelect = card.querySelector("[data-three-curriculum]");
+      curriculumSelect.disabled = readOnlyMode;
+      curriculumSelect.addEventListener("change", () => {
+        row.curriculumId = curriculumSelect.value;
+        row.startingVerb = "";
+        row.developingVerb = "";
+        row.meetingVerb = "";
+        persistAssessmentDraft();
+        renderRubricEditor();
+      });
+      const bindings = [
+        ["[data-three-starting-verb]", "startingVerb"],
+        ["[data-three-starting-text]", "startingText"],
+        ["[data-three-developing-verb]", "developingVerb"],
+        ["[data-three-developing-text]", "developingText"],
+        ["[data-three-meeting-verb]", "meetingVerb"],
+        ["[data-three-meeting-text]", "meetingText"]
+      ];
+      bindings.forEach(([selector, key]) => {
+        const input = card.querySelector(selector);
+        if (!input) return;
+        input.disabled = readOnlyMode;
+        input.addEventListener("input", () => row[key] = input.value);
+        input.addEventListener("change", () => row[key] = input.value);
+      });
+      card.querySelector("[data-three-remove]")?.addEventListener("click", () => {
+        assessment.rubric.threePointRows.splice(index, 1);
+        persistAssessmentDraft();
+        renderRubricEditor();
+      });
+      list.appendChild(card);
+    });
+    target.querySelector("[data-threepoint-add]")?.addEventListener("click", () => {
+      assessment.rubric.threePointRows.push(normalizeThreePointRow({ curriculumId: selectedRecords()[0]?.id || "" }));
+      persistAssessmentDraft();
+      renderRubricEditor();
+    });
+    target.querySelector("[data-rubric-print]").addEventListener("click", () => printAssessmentRubric(unit, assessment));
+  };
+
+  const renderRubricEditor = () => {
+    const target = editor.querySelector(".rubric-editor-area");
+    const allowedIds = new Set(selectedIds);
+    assessment.rubric.onePointRows = assessment.rubric.onePointRows.filter(row => !row.curriculumId || allowedIds.has(row.curriculumId));
+    assessment.rubric.threePointRows = assessment.rubric.threePointRows.filter(row => !row.curriculumId || allowedIds.has(row.curriculumId));
+    if (assessment.rubric.type === "onePoint") renderOnePoint(target);
+    else if (assessment.rubric.type === "threePoint") renderThreePoint(target);
+    else target.innerHTML = '<div class="workspace-disabled-note">No rubric is attached to this assessment.</div>';
+  };
+
+  const persistAssessmentDraft = () => {
+    if (readOnlyMode) return;
+    const titleInput = editor.querySelector("[data-assessment-title]");
+    const dateInput = editor.querySelector("[data-assessment-date]");
+    const typeInput = editor.querySelector("[data-assessment-type]");
+    const descriptionInput = editor.querySelector("[data-assessment-description]");
+    if (titleInput) assessment.title = titleInput.value;
+    if (dateInput) assessment.date = dateInput.value;
+    if (typeInput) assessment.type = typeInput.value;
+    if (descriptionInput) assessment.description = descriptionInput.value;
+    assessment.curriculumIds = [...selectedIds];
+    assessment.curriculumSnapshots = selectedRecords().map(record => enrichCurriculumSnapshot(record, getActiveUser()));
+    assessment.updatedAt = new Date().toISOString();
+
+    const index = unit.workspace.assessments.findIndex(item => item.id === assessment.id);
+    if (index >= 0) unit.workspace.assessments[index] = assessment;
+    else unit.workspace.assessments.push(assessment);
+
+    clearTimeout(assessmentAutosaveTimer);
+    assessmentAutosaveTimer = setTimeout(() => autosaveUnit(unit), 220);
+  };
+
+  renderSelectedCurriculum();
+  renderCatalog();
+  renderLinks();
+  renderRubricEditor();
+
+  editor.addEventListener("input", persistAssessmentDraft);
+  editor.addEventListener("change", persistAssessmentDraft);
+
+  editor.querySelector("[data-assessment-add-curriculum]")?.addEventListener("click", () => {
+    workspaceAssessmentCatalogOpen = !workspaceAssessmentCatalogOpen;
+    renderCatalog();
+  });
+  editor.querySelector("[data-assessment-add-link]")?.addEventListener("click", () => {
+    assessment.links.push(normalizeAssessmentLink({}));
+    persistAssessmentDraft();
+    renderLinks();
+  });
+  editor.querySelectorAll("[data-rubric-type]").forEach(button => {
+    button.disabled = readOnlyMode;
+    button.addEventListener("click", () => {
+      assessment.rubric.type = button.dataset.rubricType;
+      persistAssessmentDraft();
+      editor.querySelectorAll("[data-rubric-type]").forEach(item => item.classList.toggle("selected", item === button));
+      renderRubricEditor();
+    });
+  });
+
+  if (readOnlyMode) {
+    editor.querySelectorAll("input, textarea, select, button").forEach(element => {
+      if (!element.matches("[data-rubric-print]")) element.disabled = true;
+    });
+  }
+
+  editor.addEventListener("submit", event => {
+    event.preventDefault();
+    if (readOnlyMode) return;
+    const title = editor.querySelector("[data-assessment-title]").value.trim();
+    const date = editor.querySelector("[data-assessment-date]").value;
+    if (!title || !date) {
+      alert("Please add an assessment title and date.");
+      return;
+    }
+    if (!selectedIds.size) {
+      alert("Please select at least one curriculum objective for this assessment.");
+      return;
+    }
+
+    assessment.title = title;
+    assessment.date = date;
+    assessment.type = editor.querySelector("[data-assessment-type]").value;
+    assessment.description = editor.querySelector("[data-assessment-description]").value;
+    assessment.curriculumIds = [...selectedIds];
+    assessment.curriculumSnapshots = selectedRecords().map(record => enrichCurriculumSnapshot(record, getActiveUser()));
+    assessment.links = assessment.links.map(normalizeAssessmentLink).filter(link => link.title || link.url);
+    assessment.status = "active";
+    assessment.updatedAt = new Date().toISOString();
+    clearTimeout(assessmentAutosaveTimer);
+
+    const saved = normalizeAssessment(assessment);
+    const index = unit.workspace.assessments.findIndex(item => item.id === saved.id);
+    if (index >= 0) unit.workspace.assessments[index] = saved;
+    else unit.workspace.assessments.push(saved);
+    workspaceAssessmentEditorId = null;
+    workspaceAssessmentCatalogOpen = false;
+    autosaveUnit(unit);
+    renderUnitWorkspacePanel(unit, "assessments");
+  });
+
+  editor.querySelector("[data-assessment-delete]")?.addEventListener("click", () => {
+    if (!confirm(`Delete the assessment “${existing.title}”?`)) return;
+    unit.workspace.assessments = unit.workspace.assessments.filter(item => item.id !== existing.id);
+    workspaceAssessmentEditorId = null;
+    workspaceAssessmentCatalogOpen = false;
+    autosaveUnit(unit);
+    renderUnitWorkspacePanel(unit, "assessments");
+  });
+}
+
+function validateRubricForPrint(unit, assessment) {
+  if (!String(assessment.title || "").trim() || !assessment.date) return "Add an assessment title and date before printing the rubric.";
+  if (assessment.rubric.type === "onePoint") {
+    if (!assessment.rubric.onePointRows.length) return "Add at least one row to the one-point rubric before printing.";
+    for (const row of assessment.rubric.onePointRows) {
+      if (!row.curriculumId || !row.description.trim()) return "Every one-point rubric row needs a curriculum objective and a “What we want” description before printing.";
+    }
+  }
+  if (assessment.rubric.type === "threePoint") {
+    if (!assessment.rubric.threePointRows.length) return "Add at least one row to the three-point rubric before printing.";
+    for (const row of assessment.rubric.threePointRows) {
+      if (!row.curriculumId || !row.startingText.trim() || !row.developingText.trim() || !row.meetingText.trim()) {
+        return "Every three-point rubric row needs a curriculum objective plus Starting, Developing, and Meeting criteria before printing.";
+      }
+    }
+  }
+  return "";
+}
+
+function combinedCriterion(verb, text) {
+  const cleanedVerb = String(verb || "").trim();
+  const cleanedText = String(text || "").trim();
+  if (!cleanedVerb) return cleanedText;
+  if (!cleanedText) return cleanedVerb;
+  const lower = cleanedText.toLowerCase();
+  if (lower.startsWith(cleanedVerb.toLowerCase())) return cleanedText;
+  return `${cleanedVerb.charAt(0).toUpperCase()}${cleanedVerb.slice(1)} ${cleanedText}`;
+}
+
+function printAssessmentRubric(unit, assessment) {
+  if (assessment.rubric.type === "none") {
+    alert("Choose a one-point or three-point rubric first.");
+    return;
+  }
+  const issue = validateRubricForPrint(unit, assessment);
+  if (issue) {
+    alert(issue);
+    return;
+  }
+  const html = assessment.rubric.type === "onePoint"
+    ? buildOnePointRubricPrintHTML(unit, assessment)
+    : buildThreePointRubricPrintHTML(unit, assessment);
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("The browser blocked the print view. Please allow pop-ups for Teacher HQ, then try again.");
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+}
+
+function rubricPrintShell(assessment, body, orientation = "portrait") {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHTML(assessment.title)} Rubric</title><style>
+  @page{size:letter ${orientation};margin:.55in}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#151518;margin:0}.print-controls{display:flex;justify-content:flex-end;margin:0 0 18px}.print-controls button{border:0;border-radius:10px;background:#1d1d1f;color:#fff;padding:10px 15px;font-weight:700}.rubric-meta{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:18px}.student-lines{line-height:1.9;font-size:13px}.rubric-title{text-align:center;flex:1}.rubric-title h1{font-size:22px;margin:0 0 4px}.rubric-title p{margin:0;color:#666}.ref{font-size:9px;color:#777;margin-top:6px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1.5px solid #333;padding:10px;vertical-align:top}th{font-size:13px;background:#f4f4f5}td{font-size:12px}.onepoint td{height:120px}.onepoint td:nth-child(2){width:46%}.criterion{font-weight:650;line-height:1.4}.threepoint td{height:150px}.comments-space{min-height:74px;margin-top:12px;border-top:1px dashed #bbb}.objective-line{font-size:10px;color:#666;margin-bottom:7px}.rubric-footer{margin-top:16px;font-size:10px;color:#777}@media print{.print-controls{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+  </style></head><body><div class="print-controls"><button onclick="window.print()">Print / Save PDF</button></div>${body}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));<\/script></body></html>`;
+}
+
+function buildOnePointRubricPrintHTML(unit, assessment) {
+  const rows = assessment.rubric.onePointRows.map(row => {
+    const record = curriculumRecordForAssessment(unit, assessment, row.curriculumId);
+    return `<tr><td></td><td><div class="criterion">${escapeHTML(row.description)}</div><div class="ref">${escapeHTML(curriculumReference(record))}</div></td><td></td></tr>`;
+  }).join("");
+  const body = `<div class="rubric-meta"><div class="student-lines"><strong>Name:</strong> ______________________________<br><strong>Date:</strong> ${escapeHTML(assessment.date ? formatDate(assessment.date) : "________________")}</div><div class="rubric-title"><h1>${escapeHTML(assessment.title)} — Rubric</h1><p>${escapeHTML(classLabel(unit.classSpec))} · ${escapeHTML(unit.name)}</p></div><div style="width:190px"></div></div><table class="onepoint"><thead><tr><th>Getting there!</th><th>What we want</th><th>How we did it!</th></tr></thead><tbody>${rows}</tbody></table><p class="rubric-footer">Curriculum reference codes identify the linked Teacher HQ curriculum record while keeping the printed rubric readable.</p>`;
+  return rubricPrintShell(assessment, body, "portrait");
+}
+
+function buildThreePointRubricPrintHTML(unit, assessment) {
+  const labels = assessment.rubric.threePointLabels;
+  const rows = assessment.rubric.threePointRows.map(row => {
+    const record = curriculumRecordForAssessment(unit, assessment, row.curriculumId);
+    const start = combinedCriterion(row.startingVerb, row.startingText);
+    const develop = combinedCriterion(row.developingVerb, row.developingText);
+    const meet = combinedCriterion(row.meetingVerb, row.meetingText);
+    return `<tr><td><div class="objective-line">${escapeHTML(curriculumReference(record))}</div><div class="criterion">${escapeHTML(start)}</div><div class="comments-space"></div></td><td><div class="objective-line">${escapeHTML(curriculumReference(record))}</div><div class="criterion">${escapeHTML(develop)}</div><div class="comments-space"></div></td><td><div class="objective-line">${escapeHTML(curriculumReference(record))}</div><div class="criterion">${escapeHTML(meet)}</div><div class="comments-space"></div></td></tr>`;
+  }).join("");
+  const body = `<div class="rubric-meta"><div class="student-lines"><strong>Name:</strong> ______________________________<br><strong>Date:</strong> ${escapeHTML(assessment.date ? formatDate(assessment.date) : "________________")}</div><div class="rubric-title"><h1>${escapeHTML(assessment.title)} — Rubric</h1><p>${escapeHTML(classLabel(unit.classSpec))} · ${escapeHTML(unit.name)}</p></div><div style="width:190px"></div></div><table class="threepoint"><thead><tr><th>${escapeHTML(labels.starting || "Starting")}</th><th>${escapeHTML(labels.developing || "Developing")}</th><th>${escapeHTML(labels.meeting || "Meeting")}</th></tr></thead><tbody>${rows}</tbody></table><p class="rubric-footer">Blank space is intentionally preserved for written feedback and comments.</p>`;
+  return rubricPrintShell(assessment, body, "landscape");
+}
+
 /* ============================================================
    BACKUP + RESTORE + READ-ONLY SHARING
 ============================================================ */
@@ -5793,7 +6638,7 @@ function buildReadableExportHTML(user, { title, includeRestoreData, includeReadO
     ? `<script id="teacherHQBackupData" type="application/json">${safeJSONForScript(fullAppData)}</script>`
     : "";
   const embeddedReadOnly = includeReadOnlyData
-    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 6, user })}</script>`
+    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 7, user })}</script>`
     : "";
 
   return `<!DOCTYPE html>
@@ -5861,6 +6706,10 @@ function buildReadableUnitsHTML(user) {
         : `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`;
       return `<li><strong>${escapeHTML(trip.title)}</strong> · ${escapeHTML(dateLabel)}${trip.location ? ` · ${escapeHTML(trip.location)}` : ""}</li>`;
     }).join("");
+    const assessments = (unit.workspace?.assessments || []).map(assessment => {
+      const rubric = assessment.rubric?.type === "onePoint" ? "1-point rubric" : assessment.rubric?.type === "threePoint" ? "3-point rubric" : "no rubric";
+      return `<li><strong>${escapeHTML(assessment.title)}</strong> · ${escapeHTML(assessmentTypeLabel(assessment.type))} · ${escapeHTML(assessment.date ? formatDate(assessment.date) : "No date")} · ${assessment.curriculumIds?.length || 0} curriculum objective${assessment.curriculumIds?.length === 1 ? "" : "s"} · ${escapeHTML(rubric)}</li>`;
+    }).join("");
 
     const lessons = unit.lessons.map(lesson =>
       `<div class="lesson" style="border-left-color:${escapeHTML(unit.colour || "#8C6CFF")};background:${escapeHTML(hexToRgba(unit.colour || "#8C6CFF", 0.10))}"><strong>${escapeHTML(lessonDisplayTitleForUnit(unit, lesson))}</strong> · ${escapeHTML(formatDate(lesson.dateKey))} · ${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))}</div>`
@@ -5875,6 +6724,7 @@ function buildReadableUnitsHTML(user) {
         : project?.enabled === false ? '<p class="muted">No project for this unit.</p>' : "",
       linkedResources ? `<p><strong>Resources</strong></p><ul>${linkedResources}</ul>` : "",
       fieldTrips ? `<p><strong>Field Trips</strong></p><ul>${fieldTrips}</ul>` : "",
+      assessments ? `<p><strong>Assessments</strong></p><ul>${assessments}</ul>` : "",
       modalities ? `<p><strong>Learning Modalities:</strong> ${modalities}</p>` : "",
       indigenous ? `<p><strong>Indigenous Voices:</strong> ${indigenous}</p>` : ""
     ].filter(Boolean).join("");
