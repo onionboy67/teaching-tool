@@ -571,14 +571,20 @@
   }
 
 
-  function isScience79LessonRecords(records) {
-    return (records || []).some(record => record?.curriculumFormat === "science-7-9");
+  function lessonCurriculumFormat(records) {
+    return (records || []).find(record => record?.curriculumFormat)?.curriculumFormat || "k6-standard";
   }
 
-  function science79BranchLabels(records) {
-    return isScience79LessonRecords(records)
-      ? { gq: "Outcome Category", lo: "General Outcome / Skill Area" }
-      : { gq: "Guiding Question", lo: "Learning Outcome" };
+  function isScience79LessonRecords(records) {
+    return lessonCurriculumFormat(records) === "science-7-9";
+  }
+
+  function lessonBranchLabels(records) {
+    const format = lessonCurriculumFormat(records);
+    if (format === "science-7-9") return { oi: "Unit", gq: "Outcome Category", lo: "General Outcome / Skill Area" };
+    if (format === "ela-7-9") return { oi: "General Outcome", gq: "Outcome Cluster", lo: "Focus" };
+    if (format === "pe-7-9") return { oi: "General Outcome", gq: "Outcome Area", lo: "Outcome Set" };
+    return { oi: "Organizing Idea", gq: "Guiding Question", lo: "Learning Outcome" };
   }
 
   function splitFocusingQuestions(text) {
@@ -714,17 +720,19 @@
       oiMap.forEach((gqMap, oi) => {
         const oiCard = document.createElement("div");
         oiCard.className = "lesson-curriculum-branch organizing-idea";
-        oiCard.innerHTML = `<div class="branch-label"><strong>${escapeHTML(oi)}</strong></div>`;
+        const oiRecords = [...gqMap.values()].flatMap(loMap => [...loMap.values()].flat());
+        const oiLabels = lessonBranchLabels(oiRecords);
+        oiCard.innerHTML = `<div class="branch-label"><span>${escapeHTML(oiLabels.oi)}</span><strong>${escapeHTML(oi)}</strong></div>`;
         gqMap.forEach((loMap, gq) => {
           const gqCard = document.createElement("div");
           gqCard.className = "lesson-curriculum-branch guiding-question";
           const branchRecords = [...loMap.values()].flat();
-          const branchLabels = science79BranchLabels(branchRecords);
+          const branchLabels = lessonBranchLabels(branchRecords);
           gqCard.innerHTML = `<div class="branch-label"><span>${escapeHTML(branchLabels.gq)}</span><strong>${escapeHTML(gq)}</strong></div>`;
           loMap.forEach((items, lo) => {
             const loCard = document.createElement("div");
             loCard.className = "lesson-curriculum-branch learning-outcome";
-            const itemLabels = science79BranchLabels(items);
+            const itemLabels = lessonBranchLabels(items);
             loCard.innerHTML = `<div class="branch-label"><span>${escapeHTML(itemLabels.lo)}</span><strong>${escapeHTML(lo)}</strong></div>`;
             const list = document.createElement("div");
             list.className = "lesson-curriculum-statements";
@@ -737,9 +745,14 @@
               checkbox.disabled = readOnlyMode;
               const copy = document.createElement("div");
               const type = document.createElement("small");
-              type.textContent = record.officialOutcomeCategory
-                ? `${record.officialOutcomeCategory}${record.assessmentEmphasis === "summative" ? " · Summative priority" : ""}`
-                : record.type;
+              const recordFormat = record.curriculumFormat || "k6-standard";
+              if (recordFormat === "ela-7-9" || recordFormat === "pe-7-9") {
+                type.textContent = `Specific Outcome${record.officialOutcomeCode ? ` · ${record.officialOutcomeCode}` : ""}`;
+              } else {
+                type.textContent = record.officialOutcomeCategory
+                  ? `${record.officialOutcomeCategory}${record.assessmentEmphasis === "summative" ? " · Summative priority" : ""}`
+                  : record.type;
+              }
               const text = document.createElement("p");
               if (record.type === "Skills & Procedures") {
                 const analysis = analyzeCurriculumVerb(record.text);
@@ -752,6 +765,13 @@
                 text.textContent = record.text;
               }
               copy.append(type, text);
+              if (record.requiresParentOptIn) {
+                const optIn = document.createElement("small");
+                optIn.className = "lesson-parent-opt-in";
+                optIn.textContent = "Parent opt-in required";
+                optIn.title = record.contentNotice || "See Alberta curriculum source requirements.";
+                copy.appendChild(optIn);
+              }
               label.append(checkbox, copy);
               checkbox.addEventListener("change", () => {
                 if (checkbox.checked) selectedIds.add(record.id);

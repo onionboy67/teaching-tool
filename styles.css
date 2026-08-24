@@ -3915,3 +3915,10 @@ input[type="date"] {
   font-size: 0.72rem;
   font-weight: 800;
 }
+
+
+/* Curriculum source notices */
+.curriculum-parent-opt-in {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px;
+  background: #fff0f3; color: #a61b36; border: 1px solid #ffc2cf; font-size: 0.72rem; font-weight: 800;
+}

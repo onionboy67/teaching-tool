@@ -12,7 +12,7 @@ const DEFAULT_GRADES = [
   "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9"
 ];
 
-const DEFAULT_SUBJECTS = ["ELA", "Math", "Science", "Second Step", "Fine Arts"];
+const DEFAULT_SUBJECTS = ["ELA", "Math", "Science", "PE", "Second Step", "Fine Arts"];
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const FUN_UNIT_COLOURS = [
   "#FF5F8F", "#8C6CFF", "#33C7FF", "#39D98A", "#FFB347", "#F04FCB",
@@ -2965,38 +2965,51 @@ function makeCurriculumText(record, user) {
     meta.appendChild(priority);
   }
 
+  if (record.requiresParentOptIn) {
+    const notice = document.createElement("span");
+    notice.className = "curriculum-parent-opt-in";
+    notice.textContent = "Parent opt-in required";
+    notice.title = record.contentNotice || "See Alberta curriculum source requirements.";
+    meta.appendChild(notice);
+  }
+
   wrapper.appendChild(meta);
   return wrapper;
 }
 
 
-function isScience79Curriculum(recordsOrRecord) {
+function curriculumFormat(recordsOrRecord) {
   const records = Array.isArray(recordsOrRecord) ? recordsOrRecord : [recordsOrRecord];
-  return records.some(record => record?.curriculumFormat === "science-7-9");
+  return records.find(record => record?.curriculumFormat)?.curriculumFormat || "k6-standard";
+}
+
+function isScience79Curriculum(recordsOrRecord) {
+  return curriculumFormat(recordsOrRecord) === "science-7-9";
 }
 
 function curriculumBranchLabels(records) {
-  if (isScience79Curriculum(records)) {
-    return {
-      organizingIdea: "Unit",
-      guidingQuestion: "Outcome Category",
-      learningOutcome: "General Outcome / Skill Area"
-    };
+  const format = curriculumFormat(records);
+  if (format === "science-7-9") {
+    return { organizingIdea: "Unit", guidingQuestion: "Outcome Category", learningOutcome: "General Outcome / Skill Area" };
   }
-
-  return {
-    organizingIdea: "Organizing Idea",
-    guidingQuestion: "Guiding Question",
-    learningOutcome: "Learning Outcome"
-  };
+  if (format === "ela-7-9") {
+    return { organizingIdea: "General Outcome", guidingQuestion: "Outcome Cluster", learningOutcome: "Focus" };
+  }
+  if (format === "pe-7-9") {
+    return { organizingIdea: "General Outcome", guidingQuestion: "Outcome Area", learningOutcome: "Outcome Set" };
+  }
+  return { organizingIdea: "Organizing Idea", guidingQuestion: "Guiding Question", learningOutcome: "Learning Outcome" };
 }
 
 function curriculumTypeDisplayLabel(typeRecords, fallbackType) {
-  if (!isScience79Curriculum(typeRecords)) return fallbackType;
-
-  const category = typeRecords[0]?.officialOutcomeCategory || fallbackType;
-  if (category === "STS & Knowledge") return "STS & Knowledge — Summative Priority";
-  return category;
+  const format = curriculumFormat(typeRecords);
+  if (format === "science-7-9") {
+    const category = typeRecords[0]?.officialOutcomeCategory || fallbackType;
+    if (category === "STS & Knowledge") return "STS & Knowledge — Summative Priority";
+    return category;
+  }
+  if (format === "ela-7-9" || format === "pe-7-9") return "Specific Outcomes";
+  return fallbackType;
 }
 
 function scienceContextForRecords(records) {
