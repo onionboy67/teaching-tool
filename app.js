@@ -4,8 +4,8 @@
    Unit Planner + lesson placeholders + portable backup/read view
 ============================================================ */
 
-const STORAGE_KEY = "teacherHQData_v5";
-const LEGACY_STORAGE_KEYS = ["teacherHQData_v4", "teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
+const STORAGE_KEY = "teacherHQData_v6";
+const LEGACY_STORAGE_KEYS = ["teacherHQData_v5", "teacherHQData_v4", "teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
 
 const DEFAULT_GRADES = [
   "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
@@ -64,6 +64,11 @@ let selectedLessonContext = null;
 let activeUnitWorkspaceId = null;
 let activeUnitWorkspaceSection = null;
 let unitWorkspaceVisibleDate = null;
+let workspaceCurriculumMode = null;
+let workspaceResourceEditorId = null;
+let workspaceModalityEditorId = null;
+let workspaceIndigenousEditorId = null;
+let workspaceFieldTripEditorId = null;
 
 /* ============================================================
    DOM REFERENCES
@@ -131,7 +136,7 @@ const lessonPlaceholderDialog = $("lessonPlaceholderDialog");
 ============================================================ */
 
 function defaultData() {
-  return { schemaVersion: 5, activeUserId: null, users: [] };
+  return { schemaVersion: 6, activeUserId: null, users: [] };
 }
 
 function loadData() {
@@ -154,7 +159,7 @@ function loadData() {
 
 function normalizeData(data) {
   const normalized = data && typeof data === "object" ? data : defaultData();
-  normalized.schemaVersion = 5;
+  normalized.schemaVersion = 6;
   if (!Array.isArray(normalized.users)) normalized.users = [];
   if (!("activeUserId" in normalized)) normalized.activeUserId = null;
   normalized.users = normalized.users.map(normalizeUser);
@@ -179,6 +184,15 @@ function normalizeUser(user) {
     bloomOverrides: user.bloomOverrides && typeof user.bloomOverrides === "object"
       ? { ...user.bloomOverrides }
       : {},
+    resourceLibrary: Array.isArray(user.resourceLibrary)
+      ? user.resourceLibrary.map(normalizeResourceRecord)
+      : [],
+    learningModalities: Array.isArray(user.learningModalities)
+      ? user.learningModalities.map(normalizeLearningModality)
+      : [],
+    indigenousResources: Array.isArray(user.indigenousResources)
+      ? user.indigenousResources.map(normalizeIndigenousResource)
+      : [],
     units: Array.isArray(user.units) ? user.units.map(normalizeUnit) : []
   };
 
@@ -295,6 +309,70 @@ function normalizeException(item) {
   };
 }
 
+function normalizeResourceRecord(resource) {
+  const kind = ["reference", "physical", "online", "book"].includes(resource.kind)
+    ? resource.kind
+    : "online";
+
+  return {
+    id: resource.id || makeId("resource"),
+    kind,
+    referenceKind: kind === "reference" && ["book", "online"].includes(resource.referenceKind)
+      ? resource.referenceKind
+      : "",
+    title: String(resource.title || "Untitled Resource").trim(),
+    author: String(resource.author || "").trim(),
+    publisher: String(resource.publisher || "").trim(),
+    year: String(resource.year || "").trim(),
+    edition: String(resource.edition || "").trim(),
+    url: String(resource.url || "").trim(),
+    location: String(resource.location || "").trim(),
+    notes: String(resource.notes || "").trim(),
+    createdAt: resource.createdAt || new Date().toISOString(),
+    updatedAt: resource.updatedAt || new Date().toISOString()
+  };
+}
+
+function normalizeLearningModality(modality) {
+  return {
+    id: modality.id || makeId("modality"),
+    title: String(modality.title || "Learning Modality").trim(),
+    description: String(modality.description || "").trim(),
+    createdAt: modality.createdAt || new Date().toISOString(),
+    updatedAt: modality.updatedAt || new Date().toISOString()
+  };
+}
+
+function normalizeIndigenousResource(resource) {
+  const normalized = normalizeResourceRecord({ ...resource, id: resource.id || makeId("indigenous-resource") });
+  return {
+    ...normalized,
+    description: String(resource.description || "").trim(),
+    grades: normalizeGradeArray(Array.isArray(resource.grades) ? resource.grades : []),
+    subjects: Array.isArray(resource.subjects)
+      ? [...new Set(resource.subjects.map(value => String(value || "").trim()).filter(Boolean))]
+      : []
+  };
+}
+
+function normalizeFieldTrip(fieldTrip) {
+  const startDate = fieldTrip.startDate || fieldTrip.date || "";
+  const endDate = fieldTrip.endDate || startDate;
+  return {
+    id: fieldTrip.id || makeId("field-trip"),
+    title: String(fieldTrip.title || "Field Trip").trim(),
+    description: String(fieldTrip.description || "").trim(),
+    purpose: String(fieldTrip.purpose || "").trim(),
+    location: String(fieldTrip.location || "").trim(),
+    startDate,
+    endDate: endDate && startDate && endDate < startDate ? startDate : endDate,
+    manualOverride: Boolean(fieldTrip.manualOverride),
+    curriculumIds: Array.isArray(fieldTrip.curriculumIds) ? [...new Set(fieldTrip.curriculumIds)] : [],
+    createdAt: fieldTrip.createdAt || new Date().toISOString(),
+    updatedAt: fieldTrip.updatedAt || new Date().toISOString()
+  };
+}
+
 function normalizeUnit(unit) {
   const classSpec = unit.classSpec || {
     grades: Array.isArray(unit.grades) ? unit.grades : [],
@@ -340,12 +418,39 @@ function normalizeUnit(unit) {
     availableMinutesAtCreation: Number(unit.availableMinutesAtCreation) || 0,
     startDate: unit.startDate || "",
     lessons: Array.isArray(unit.lessons) ? unit.lessons.map(normalizeLesson) : [],
-    workspace: unit.workspace && typeof unit.workspace === "object"
-      ? structuredCloneSafe(unit.workspace)
-      : {},
+    workspace: normalizeUnitWorkspace(unit.workspace),
     createdAt: unit.createdAt || new Date().toISOString(),
     updatedAt: unit.updatedAt || new Date().toISOString(),
     needsScheduleReview: Boolean(unit.needsScheduleReview)
+  };
+}
+
+function normalizeUnitWorkspace(workspace) {
+  const source = workspace && typeof workspace === "object" ? workspace : {};
+  const simulation = source.simulation && typeof source.simulation === "object" ? source.simulation : {};
+  const project = source.project && typeof source.project === "object" ? source.project : {};
+
+  return {
+    ...structuredCloneSafe(source),
+    simulation: {
+      enabled: typeof simulation.enabled === "boolean" ? simulation.enabled : null,
+      title: String(simulation.title || "").trim(),
+      description: String(simulation.description || "").trim()
+    },
+    project: {
+      enabled: typeof project.enabled === "boolean" ? project.enabled : null,
+      title: String(project.title || "").trim(),
+      description: String(project.description || "").trim(),
+      skillIds: Array.isArray(project.skillIds) ? [...new Set(project.skillIds)] : []
+    },
+    resourceIds: Array.isArray(source.resourceIds) ? [...new Set(source.resourceIds)] : [],
+    fieldTrips: Array.isArray(source.fieldTrips) ? source.fieldTrips.map(normalizeFieldTrip) : [],
+    learningModalityIds: Array.isArray(source.learningModalityIds)
+      ? [...new Set(source.learningModalityIds)]
+      : [],
+    indigenousVoiceResourceIds: Array.isArray(source.indigenousVoiceResourceIds)
+      ? [...new Set(source.indigenousVoiceResourceIds)]
+      : []
   };
 }
 
@@ -368,6 +473,9 @@ function normalizeLesson(lesson) {
     classSpec: lesson.classSpec || { grades: [], subject: "" },
     lessonPlanStatus: lesson.lessonPlanStatus || "placeholder",
     locked: Boolean(lesson.locked),
+    override: lesson.override && typeof lesson.override === "object"
+      ? structuredCloneSafe(lesson.override)
+      : null,
     createdAt: lesson.createdAt || new Date().toISOString()
   };
 }
@@ -1773,6 +1881,16 @@ function renderCalendar() {
       if (occurrences.length) cell.title = occurrences.map(occurrenceSummary).join("\n");
     }
 
+    const fieldTrips = user ? getFieldTripsForDate(user, dateKey) : [];
+    fieldTrips.forEach(({ unit, trip }) => {
+      const chip = document.createElement("span");
+      chip.className = "overview-field-trip-chip";
+      chip.style.setProperty("--field-trip-colour", normalizeHexColour(unit.colour) || "#FF7043");
+      chip.textContent = `[FIELD TRIP] ${trip.title}`;
+      chip.title = `${unit.name} · ${trip.location || "Field trip"}`;
+      cell.appendChild(chip);
+    });
+
     cell.addEventListener("click", event => {
       event.stopPropagation();
       openDayDetails(dateKey);
@@ -1866,6 +1984,8 @@ function openDayDetails(dateKey) {
   if (!user) return;
   dayDetailsHeading.textContent = formatLongDate(dateKey);
   dayDetailsList.innerHTML = "";
+  const fieldTrips = getFieldTripsForDate(user, dateKey);
+  appendFieldTripDayCards(dayDetailsList, fieldTrips);
   const exception = getExceptionForDate(user, dateKey);
   if (exception) {
     dayExceptionSummary.classList.remove("hidden");
@@ -1877,7 +1997,9 @@ function openDayDetails(dateKey) {
     dayExceptionSummary.textContent = `${exception.type} · ${details.join(" · ")}`;
     const empty = document.createElement("p");
     empty.className = "section-subtitle";
-    empty.textContent = "No lessons or teaching blocks can be scheduled on this date.";
+    empty.textContent = fieldTrips.length
+      ? "This is a Day Off. The field trip above exists because its date was added with Manual Override."
+      : "No lessons or teaching blocks can be scheduled on this date.";
     dayDetailsList.appendChild(empty);
     dayDetailsDialog.showModal();
     return;
@@ -1888,7 +2010,9 @@ function openDayDetails(dateKey) {
   if (occurrences.length === 0) {
     const empty = document.createElement("p");
     empty.className = "section-subtitle";
-    empty.textContent = "No scheduled blocks on this date.";
+    empty.textContent = fieldTrips.length
+      ? "No regular scheduled blocks on this date."
+      : "No scheduled blocks on this date.";
     dayDetailsList.appendChild(empty);
     dayDetailsDialog.showModal();
     return;
@@ -1918,7 +2042,7 @@ function openDayDetails(dateKey) {
       allocation.type = "button";
       allocation.className = "unit-allocation-link";
       allocation.style.setProperty("--unit-colour", unit.colour || "#8C6CFF");
-      allocation.textContent = `${unit.name} · ${lessonDisplayTitle(lesson)}`;
+      allocation.textContent = `${unit.name} · ${lessonDisplayTitleForUnit(unit, lesson)}`;
       allocation.addEventListener("click", () => openLessonPlaceholder(unit.id, lesson.id));
       card.appendChild(allocation);
     });
@@ -3271,7 +3395,7 @@ function renderUnitCalendar() {
         lessonsHere.forEach(lesson => {
           const label = document.createElement("span");
           label.className = "unit-calendar-note unit-lesson-note";
-          label.textContent = lessonDisplayTitle(lesson);
+          label.textContent = lessonDisplayTitleForUnit(unitDraft, lesson);
           label.style.setProperty("--lesson-colour", colour);
           label.style.setProperty("--lesson-colour-soft", hexToRgba(colour, 0.22));
           cell.appendChild(label);
@@ -3292,7 +3416,7 @@ function renderUnitCalendar() {
           label.style.setProperty("--other-unit-colour-soft", hexToRgba(colour, 0.2));
           label.innerHTML =
             `<small>${escapeHTML(unit.name)}</small>` +
-            `<strong>${escapeHTML(lessonDisplayTitle(lesson))}</strong>`;
+            `<strong>${escapeHTML(lessonDisplayTitleForUnit(unit, lesson))}</strong>`;
 
           cell.appendChild(label);
         });
@@ -3438,6 +3562,7 @@ function saveUnitFromWizard() {
   unitDraft.selectedCurriculum = buildSelectedCurriculumSnapshots();
   unitDraft.curriculumLinks ||= { working: [], prerequisite: [], lookingAhead: [], crossCurricular: [] };
   unitDraft.curriculumLinks.working = structuredCloneSafe(unitDraft.selectedCurriculum);
+  syncFieldTripOverrides(unitDraft);
   unitDraft.updatedAt = new Date().toISOString();
   if (!unitDraft.createdAt) unitDraft.createdAt = unitDraft.updatedAt;
 
@@ -3464,6 +3589,7 @@ function reconcileFutureUnits(user, fromDateKey) {
     const temp = { ...unit, targetMinutes: originalTarget };
     const result = allocateLessons(temp, user, reflowStart > unit.startDate ? reflowStart : unit.startDate, unit.id, fixed);
     unit.lessons = result.lessons;
+    syncFieldTripOverrides(unit);
     unit.needsScheduleReview = result.scheduledMinutes < originalTarget;
     unit.updatedAt = new Date().toISOString();
   });
@@ -3511,6 +3637,11 @@ $("unitWorkspaceNextMonth").addEventListener("click", () => {
 
 $("unitWorkspaceBackToCalendar").addEventListener("click", () => {
   activeUnitWorkspaceSection = null;
+  workspaceCurriculumMode = null;
+  workspaceResourceEditorId = null;
+  workspaceModalityEditorId = null;
+  workspaceIndigenousEditorId = null;
+  workspaceFieldTripEditorId = null;
   renderUnitWorkspace();
 });
 
@@ -3549,6 +3680,11 @@ $("unitWorkspaceColourButton").addEventListener("click", () => {
 $("unitWorkspaceNav").querySelectorAll("[data-unit-section]").forEach(button => {
   button.addEventListener("click", () => {
     activeUnitWorkspaceSection = button.dataset.unitSection;
+    workspaceCurriculumMode = null;
+    workspaceResourceEditorId = null;
+    workspaceModalityEditorId = null;
+    workspaceIndigenousEditorId = null;
+    workspaceFieldTripEditorId = null;
     renderUnitWorkspace();
   });
 });
@@ -3593,6 +3729,11 @@ function openUnitDetail(unitId) {
 
   activeUnitWorkspaceId = unit.id;
   activeUnitWorkspaceSection = null;
+  workspaceCurriculumMode = null;
+  workspaceResourceEditorId = null;
+  workspaceModalityEditorId = null;
+  workspaceIndigenousEditorId = null;
+  workspaceFieldTripEditorId = null;
 
   const baseDate = unit.startDate
     ? parseLocalDate(unit.startDate)
@@ -3816,7 +3957,7 @@ function renderUnitWorkspaceCalendar() {
           unitName.textContent = unit.name;
 
           const lessonTitle = document.createElement("strong");
-          lessonTitle.textContent = lessonDisplayTitle(lesson);
+          lessonTitle.textContent = lessonDisplayTitleForUnit(unit, lesson);
 
           lessonButton.append(unitName, lessonTitle);
 
@@ -3826,6 +3967,36 @@ function renderUnitWorkspaceCalendar() {
           });
 
           cell.appendChild(lessonButton);
+        });
+    });
+
+    classUnits.forEach(unit => {
+      (unit.workspace?.fieldTrips || [])
+        .filter(trip => isDateWithin(dateKey, trip.startDate, trip.endDate))
+        .forEach(trip => {
+          const alreadyShownThroughLesson = (unit.lessons || []).some(lesson =>
+            lesson.dateKey === dateKey &&
+            lesson.override?.type === "fieldTrip" &&
+            lesson.override?.fieldTripId === trip.id
+          );
+
+          if (alreadyShownThroughLesson) return;
+
+          const colour = normalizeHexColour(unit.colour) || "#8C6CFF";
+          const eventButton = document.createElement("button");
+          eventButton.type = "button";
+          eventButton.className = "workspace-field-trip-event";
+          eventButton.style.setProperty("--workspace-unit-colour", colour);
+          eventButton.style.setProperty("--workspace-unit-colour-soft", hexToRgba(colour, 0.18));
+          eventButton.innerHTML = `<small>${escapeHTML(unit.name)}</small><strong>[FIELD TRIP] ${escapeHTML(trip.title)}</strong>`;
+          eventButton.addEventListener("click", event => {
+            event.stopPropagation();
+            activeUnitWorkspaceId = unit.id;
+            activeUnitWorkspaceSection = "fieldTrips";
+            workspaceFieldTripEditorId = trip.id;
+            renderUnitWorkspace();
+          });
+          cell.appendChild(eventButton);
         });
     });
 
@@ -3874,38 +4045,54 @@ function renderUnitWorkspacePanel(unit, section) {
   heading.textContent = labels[section] || "Unit";
   content.innerHTML = "";
 
-  if (section === "curriculum") {
-    renderUnitWorkspaceCurriculum(unit, content);
-    return;
-  }
-
-  if (section === "lessons") {
-    renderUnitWorkspaceLessons(unit, content);
-    return;
-  }
+  if (section === "curriculum") return renderUnitWorkspaceCurriculum(unit, content);
+  if (section === "simulation") return renderUnitWorkspaceSimulation(unit, content);
+  if (section === "project") return renderUnitWorkspaceProject(unit, content);
+  if (section === "resources") return renderUnitWorkspaceResources(unit, content);
+  if (section === "fieldTrips") return renderUnitWorkspaceFieldTrips(unit, content);
+  if (section === "learningModalities") return renderUnitWorkspaceLearningModalities(unit, content);
+  if (section === "indigenousVoices") return renderUnitWorkspaceIndigenousVoices(unit, content);
+  if (section === "lessons") return renderUnitWorkspaceLessons(unit, content);
 
   const empty = document.createElement("div");
   empty.className = "workspace-section-empty";
 
   const title = document.createElement("strong");
-  title.textContent = `${labels[section] || "This section"} is ready for its next build.`;
+  title.textContent = `${labels[section] || "This section"} is intentionally waiting for its dedicated release.`;
 
   const copy = document.createElement("p");
-  copy.textContent =
-    "The Unit Workspace and autosave foundation are in place. " +
-    "Content for this section will be added without changing the unit/calendar structure you are testing now.";
+  copy.textContent = section === "assessments"
+    ? "Assessment creation, assessment histories, one-point and three-point rubrics arrive in Release C."
+    : section === "cognitiveTempo"
+      ? "Cognitive Tempo will be calculated after assessments are attached to lessons in the assessment and lesson releases."
+      : "The data structure and Unit Workspace are ready, but this section depends on source data or the Lesson system that comes later.";
 
   empty.append(title, copy);
   content.appendChild(empty);
 }
 
+/* ============================================================
+   UNIT WORKSPACE — CURRICULUM RELATIONSHIPS
+============================================================ */
+
 function renderUnitWorkspaceCurriculum(unit, container) {
+  if (workspaceCurriculumMode) {
+    renderWorkspaceCurriculumPicker(unit, workspaceCurriculumMode, container);
+    return;
+  }
+
   const links = unit.curriculumLinks || {
     working: unit.selectedCurriculum || [],
     prerequisite: [],
     lookingAhead: [],
     crossCurricular: []
   };
+
+  const intro = document.createElement("p");
+  intro.className = "section-subtitle workspace-section-intro";
+  intro.textContent =
+    "Curriculum is kept in separate pools so prerequisite, current, future, and cross-curricular material never gets mixed together in the Lesson Planner.";
+  container.appendChild(intro);
 
   const cards = document.createElement("div");
   cards.className = "workspace-curriculum-cards";
@@ -3914,22 +4101,22 @@ function renderUnitWorkspaceCurriculum(unit, container) {
     {
       key: "prerequisite",
       title: "Prerequisite Curriculum",
-      subtitle: "Previous-grade curriculum kept separate from lesson objectives."
+      subtitle: "Previous-grade curriculum. Saved as last-grade context, never as today's objective."
     },
     {
       key: "working",
       title: "Working Curriculum",
-      subtitle: "The curriculum this unit is actively teaching."
+      subtitle: "The curriculum this unit is actively teaching and can use in lessons and assessments."
     },
     {
       key: "lookingAhead",
       title: "Looking Ahead",
-      subtitle: "Next-grade curriculum kept separate from current objectives."
+      subtitle: "Next-grade curriculum. Saved as future context, separate from current objectives."
     },
     {
       key: "crossCurricular",
       title: "Cross-Curricular Connections",
-      subtitle: "Connections that remain distinct from Working Curriculum."
+      subtitle: "Connections to other loaded curriculum that remain distinct from Working Curriculum."
     }
   ].forEach(item => {
     const card = document.createElement("button");
@@ -3945,14 +4132,10 @@ function renderUnitWorkspaceCurriculum(unit, container) {
       `</span>` +
       `<span class="workspace-curriculum-count">${count}</span>`;
 
-    if (item.key === "working" && !readOnlyMode) {
-      card.addEventListener("click", () => {
-        unitDetailDialog.close();
-        openUnitWizard(unit.id, 2);
-      });
-    } else {
-      card.classList.add("workspace-card-preview-only");
-    }
+    card.addEventListener("click", () => {
+      workspaceCurriculumMode = item.key;
+      renderUnitWorkspacePanel(unit, "curriculum");
+    });
 
     cards.appendChild(card);
   });
@@ -3960,25 +4143,11 @@ function renderUnitWorkspaceCurriculum(unit, container) {
   container.appendChild(cards);
 
   const working = links.working || [];
-
   const heading = document.createElement("div");
   heading.className = "workspace-subheading";
   heading.innerHTML =
     `<div><p class="small-label">Working Curriculum</p>` +
     `<h4>${working.length} selected item${working.length === 1 ? "" : "s"}</h4></div>`;
-
-  if (!readOnlyMode) {
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.className = "secondary-button";
-    edit.textContent = "Edit Working Curriculum";
-    edit.addEventListener("click", () => {
-      unitDetailDialog.close();
-      openUnitWizard(unit.id, 2);
-    });
-    heading.appendChild(edit);
-  }
-
   container.appendChild(heading);
 
   if (!working.length) {
@@ -4009,6 +4178,1383 @@ function renderUnitWorkspaceCurriculum(unit, container) {
   container.appendChild(list);
 }
 
+function relationTitle(relation) {
+  return {
+    prerequisite: "Prerequisite Curriculum",
+    working: "Working Curriculum",
+    lookingAhead: "Looking Ahead",
+    crossCurricular: "Cross-Curricular Connections"
+  }[relation] || "Curriculum";
+}
+
+function previousOrNextGrade(grade, delta) {
+  if (grade === "Kindergarten" || grade === "K") {
+    return delta > 0 ? "Grade 1" : "";
+  }
+
+  const match = String(grade || "").match(/^(?:Grade\s*)?(\d+)$/i);
+  if (!match) return "";
+
+  const number = Number(match[1]) + delta;
+  if (number < 0) return "";
+  if (number === 0) return "Kindergarten";
+  return `Grade ${number}`;
+}
+
+function curriculumRecordsForRelation(unit, relation) {
+  const subject = String(unit?.classSpec?.subject || "").toLowerCase();
+  const grades = normalizeGradeArray(unit?.classSpec?.grades || []);
+
+  if (relation === "crossCurricular") {
+    return [...CURRICULUM];
+  }
+
+  let targetGrades = grades;
+  if (relation === "prerequisite") {
+    targetGrades = normalizeGradeArray(grades.map(grade => previousOrNextGrade(grade, -1)).filter(Boolean));
+  }
+  if (relation === "lookingAhead") {
+    targetGrades = normalizeGradeArray(grades.map(grade => previousOrNextGrade(grade, 1)).filter(Boolean));
+  }
+
+  return CURRICULUM.filter(record =>
+    String(record.subject || "").toLowerCase() === subject &&
+    targetGrades.includes(record.grade)
+  );
+}
+
+function curriculumRelationTargetLabel(unit, relation) {
+  const grades = normalizeGradeArray(unit?.classSpec?.grades || []);
+  const subject = unit?.classSpec?.subject || "";
+
+  if (relation === "working") return classLabel(unit.classSpec);
+  if (relation === "crossCurricular") return "Any curriculum currently loaded in Teacher HQ";
+
+  const shifted = normalizeGradeArray(
+    grades.map(grade => previousOrNextGrade(grade, relation === "prerequisite" ? -1 : 1)).filter(Boolean)
+  );
+
+  return shifted.length ? `${gradeDisplay(shifted)} ${subject}`.trim() : `No ${relation === "prerequisite" ? "previous" : "next"} grade can be inferred`;
+}
+
+function renderWorkspaceCurriculumPicker(unit, relation, container) {
+  const top = document.createElement("div");
+  top.className = "workspace-subpage-heading";
+
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "text-button workspace-back-button";
+  back.textContent = "← Curriculum";
+  back.addEventListener("click", () => {
+    workspaceCurriculumMode = null;
+    renderUnitWorkspacePanel(unit, "curriculum");
+  });
+
+  const copy = document.createElement("div");
+  copy.innerHTML =
+    `<p class="small-label">${escapeHTML(curriculumRelationTargetLabel(unit, relation))}</p>` +
+    `<h4>${escapeHTML(relationTitle(relation))}</h4>`;
+
+  top.append(back, copy);
+  container.appendChild(top);
+
+  const description = document.createElement("p");
+  description.className = "section-subtitle workspace-section-intro";
+  description.textContent = relation === "prerequisite"
+    ? "Selections here are saved as last-grade context and will not be offered as today's curricular objectives in the Lesson Planner."
+    : relation === "lookingAhead"
+      ? "Selections here are saved as next-grade context and remain separate from current objectives."
+      : relation === "crossCurricular"
+        ? "Selections here are saved as cross-curricular connections and remain distinct from Working Curriculum."
+        : "These are the objectives this unit is actively teaching. Changes autosave immediately.";
+  container.appendChild(description);
+
+  const records = curriculumRecordsForRelation(unit, relation);
+  const selectedSnapshots = unit.curriculumLinks?.[relation] || [];
+  const selectedIds = new Set(selectedSnapshots.map(record => record.id));
+
+  const actions = document.createElement("div");
+  actions.className = "section-action-row workspace-curriculum-global-actions";
+
+  const selectAll = document.createElement("button");
+  selectAll.type = "button";
+  selectAll.className = "secondary-button";
+  selectAll.textContent = "Select All";
+
+  const clearAll = document.createElement("button");
+  clearAll.type = "button";
+  clearAll.className = "secondary-button";
+  clearAll.textContent = "Clear All";
+
+  actions.append(selectAll, clearAll);
+  if (!readOnlyMode) container.appendChild(actions);
+
+  if (!records.length) {
+    selectAll.disabled = true;
+    clearAll.disabled = selectedSnapshots.length === 0;
+
+    clearAll.addEventListener("click", () => {
+      if (readOnlyMode) return;
+      unit.curriculumLinks[relation] = [];
+      if (relation === "working") unit.selectedCurriculum = [];
+      autosaveUnit(unit);
+      renderUnitWorkspacePanel(unit, "curriculum");
+    });
+
+    const empty = document.createElement("div");
+    empty.className = "workspace-catalog-missing";
+    empty.innerHTML =
+      `<strong>No matching curriculum has been loaded yet.</strong>` +
+      `<p>Teacher HQ will never invent missing curriculum. When you upload ${escapeHTML(curriculumRelationTargetLabel(unit, relation))}, it will appear here automatically.</p>`;
+    container.appendChild(empty);
+
+    if (selectedSnapshots.length) {
+      const retained = document.createElement("div");
+      retained.className = "workspace-retained-curriculum";
+      retained.innerHTML = `<h4>Previously saved selections</h4>`;
+      selectedSnapshots.forEach(record => {
+        const card = document.createElement("article");
+        card.className = "workspace-curriculum-objective";
+        card.appendChild(makeCurriculumText(record, getActiveUser()));
+        retained.appendChild(card);
+      });
+      container.appendChild(retained);
+    }
+    return;
+  }
+
+  const browser = document.createElement("div");
+  browser.className = "curriculum-browser workspace-curriculum-browser";
+  container.appendChild(browser);
+
+  const persist = () => {
+    const catalogIds = new Set(CURRICULUM.map(record => record.id));
+    const snapshots = CURRICULUM
+      .filter(record => selectedIds.has(record.id))
+      .map(record => enrichCurriculumSnapshot(record, getActiveUser()));
+
+    (unit.curriculumLinks?.[relation] || [])
+      .filter(record => !catalogIds.has(record.id) && selectedIds.has(record.id))
+      .forEach(record => snapshots.push(enrichCurriculumSnapshot(record, getActiveUser())));
+
+    unit.curriculumLinks[relation] = snapshots;
+    if (relation === "working") {
+      unit.selectedCurriculum = snapshots.map(record => structuredCloneSafe(record));
+    }
+
+    autosaveUnit(unit);
+  };
+
+  const sync = () => {
+    browser.querySelectorAll('input[data-workspace-curriculum-id]').forEach(checkbox => {
+      checkbox.checked = selectedIds.has(checkbox.dataset.workspaceCurriculumId);
+      checkbox.closest(".curriculum-leaf")?.classList.toggle("selected", checkbox.checked);
+    });
+
+    browser.querySelectorAll(".curriculum-selection-controls").forEach(wrapper => {
+      const ids = wrapper.dataset.ids.split("|").filter(Boolean);
+      const count = ids.filter(id => selectedIds.has(id)).length;
+      const counter = wrapper.querySelector(".curriculum-selection-count");
+      const select = wrapper.querySelector(".curriculum-select-all");
+      const clear = wrapper.querySelector(".curriculum-clear-all");
+      if (counter) counter.textContent = `${count}/${ids.length}`;
+      if (select) select.disabled = count === ids.length;
+      if (clear) clear.disabled = count === 0;
+    });
+
+    selectAll.disabled = records.every(record => selectedIds.has(record.id));
+    clearAll.disabled = selectedIds.size === 0;
+  };
+
+  const makeControls = branchRecords => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "curriculum-selection-controls";
+    wrapper.dataset.ids = branchRecords.map(record => record.id).join("|");
+
+    const count = document.createElement("span");
+    count.className = "curriculum-selection-count";
+
+    const select = document.createElement("button");
+    select.type = "button";
+    select.className = "curriculum-select-all";
+    select.textContent = "Select all";
+
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "curriculum-clear-all";
+    clear.textContent = "Clear all";
+
+    [select, clear].forEach(button => button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+    }));
+
+    select.addEventListener("click", () => {
+      branchRecords.forEach(record => selectedIds.add(record.id));
+      persist();
+      sync();
+    });
+
+    clear.addEventListener("click", () => {
+      branchRecords.forEach(record => selectedIds.delete(record.id));
+      persist();
+      sync();
+    });
+
+    if (readOnlyMode) {
+      select.disabled = true;
+      clear.disabled = true;
+      select.classList.add("hidden");
+      clear.classList.add("hidden");
+    }
+
+    wrapper.append(count, select, clear);
+    return wrapper;
+  };
+
+  const byCourse = groupBy(records, record => `${record.grade}|||${record.subject}`);
+
+  Object.entries(byCourse).forEach(([courseKey, courseRecords]) => {
+    const [grade, subject] = courseKey.split("|||");
+    const gradeSection = document.createElement("details");
+    gradeSection.className = "curriculum-level curriculum-grade";
+    gradeSection.open = true;
+
+    const summary = document.createElement("summary");
+    const main = document.createElement("div");
+    main.className = "curriculum-summary-main";
+    main.innerHTML =
+      `<span class="curriculum-chevron" aria-hidden="true"></span>` +
+      `<div class="curriculum-card-title"><span class="curriculum-level-label">Grade / Subject</span><strong>${escapeHTML(grade)} ${escapeHTML(subject)}</strong></div>`;
+    summary.append(main, makeControls(courseRecords));
+    gradeSection.appendChild(summary);
+
+    const byOI = groupBy(courseRecords, record => `${record.organizingIdea}|||${record.organizingIdeaDescription || ""}`);
+
+    Object.entries(byOI).forEach(([oiKey, oiRecords]) => {
+      const [oi, oiDescription] = oiKey.split("|||");
+      const oiSection = document.createElement("details");
+      oiSection.className = "curriculum-level curriculum-organizing-idea";
+
+      const oiSummary = document.createElement("summary");
+      const oiMain = document.createElement("div");
+      oiMain.className = "curriculum-summary-main";
+      oiMain.innerHTML =
+        `<span class="curriculum-chevron" aria-hidden="true"></span>` +
+        `<div class="curriculum-card-title"><strong>${escapeHTML(oi)}</strong><small>${escapeHTML(oiDescription)}</small></div>`;
+      oiSummary.append(oiMain, makeControls(oiRecords));
+      oiSection.appendChild(oiSummary);
+
+      const byGQ = groupBy(oiRecords, record => record.guidingQuestion || "Guiding Question");
+      Object.entries(byGQ).forEach(([gq, gqRecords]) => {
+        const gqSection = document.createElement("details");
+        gqSection.className = "curriculum-level curriculum-gq";
+
+        const gqSummary = document.createElement("summary");
+        const gqMain = document.createElement("div");
+        gqMain.className = "curriculum-summary-main";
+        gqMain.innerHTML =
+          `<span class="curriculum-chevron" aria-hidden="true"></span>` +
+          `<div class="curriculum-card-title"><span class="curriculum-level-label">Guiding Question</span><strong>${escapeHTML(gq)}</strong></div>`;
+        gqSummary.append(gqMain, makeControls(gqRecords));
+        gqSection.appendChild(gqSummary);
+
+        const byLO = groupBy(gqRecords, record => record.learningOutcome || "Learning Outcome");
+        Object.entries(byLO).forEach(([lo, loRecords]) => {
+          const loSection = document.createElement("details");
+          loSection.className = "curriculum-level curriculum-lo";
+
+          const loSummary = document.createElement("summary");
+          const loMain = document.createElement("div");
+          loMain.className = "curriculum-summary-main";
+          loMain.innerHTML =
+            `<span class="curriculum-chevron" aria-hidden="true"></span>` +
+            `<div class="curriculum-card-title"><span class="curriculum-level-label">Learning Outcome</span><strong>${escapeHTML(lo)}</strong></div>`;
+          loSummary.append(loMain, makeControls(loRecords));
+          loSection.appendChild(loSummary);
+
+          ["Knowledge", "Understanding", "Skills & Procedures"].forEach(type => {
+            const typeRecords = loRecords.filter(record => record.type === type);
+            if (!typeRecords.length) return;
+
+            const box = document.createElement("section");
+            box.className = `curriculum-type-box curriculum-type-${type.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`;
+
+            const typeHeader = document.createElement("div");
+            typeHeader.className = "curriculum-type-header";
+            typeHeader.innerHTML = `<div class="curriculum-type-heading"><strong>${escapeHTML(type)}</strong><span class="curriculum-type-count">${typeRecords.length} item${typeRecords.length === 1 ? "" : "s"}</span></div>`;
+            typeHeader.appendChild(makeControls(typeRecords));
+            box.appendChild(typeHeader);
+
+            const leafList = document.createElement("div");
+            leafList.className = "curriculum-leaf-list";
+
+            typeRecords.forEach(record => {
+              const label = document.createElement("label");
+              label.className = "curriculum-leaf";
+
+              const checkbox = document.createElement("input");
+              checkbox.type = "checkbox";
+              checkbox.dataset.workspaceCurriculumId = record.id;
+              checkbox.checked = selectedIds.has(record.id);
+              checkbox.disabled = readOnlyMode;
+
+              checkbox.addEventListener("change", () => {
+                if (checkbox.checked) selectedIds.add(record.id);
+                else selectedIds.delete(record.id);
+                label.classList.toggle("selected", checkbox.checked);
+                persist();
+                sync();
+              });
+
+              const visual = document.createElement("span");
+              visual.className = "curriculum-checkmark";
+              visual.setAttribute("aria-hidden", "true");
+
+              label.classList.toggle("selected", checkbox.checked);
+              label.append(checkbox, visual, makeCurriculumText(record, getActiveUser()));
+              leafList.appendChild(label);
+            });
+
+            box.appendChild(leafList);
+            loSection.appendChild(box);
+          });
+
+          gqSection.appendChild(loSection);
+        });
+
+        oiSection.appendChild(gqSection);
+      });
+
+      gradeSection.appendChild(oiSection);
+    });
+
+    browser.appendChild(gradeSection);
+  });
+
+  selectAll.addEventListener("click", () => {
+    records.forEach(record => selectedIds.add(record.id));
+    persist();
+    sync();
+  });
+
+  clearAll.addEventListener("click", () => {
+    records.forEach(record => selectedIds.delete(record.id));
+    persist();
+    sync();
+  });
+
+  sync();
+}
+
+/* ============================================================
+   UNIT WORKSPACE — SIMULATION
+============================================================ */
+
+function renderUnitWorkspaceSimulation(unit, container) {
+  const simulation = unit.workspace.simulation;
+
+  container.innerHTML = `
+    <div class="workspace-editor-card">
+      <div class="workspace-editor-heading">
+        <div>
+          <p class="small-label">Optional Unit Element</p>
+          <h4>Interactive Simulation</h4>
+          <p class="section-subtitle">Describe the simulation that frames or anchors this unit.</p>
+        </div>
+        <div class="segmented-choice" role="group" aria-label="Interactive simulation">
+          <button type="button" data-simulation-choice="yes" class="${simulation.enabled === true ? "selected" : ""}">Yes</button>
+          <button type="button" data-simulation-choice="no" class="${simulation.enabled === false ? "selected" : ""}">No simulation</button>
+        </div>
+      </div>
+      <div id="simulationFields" class="${simulation.enabled === false ? "hidden" : ""}">
+        <label class="form-field"><span>Simulation Title</span><input id="simulationTitleInput" type="text" value="${escapeHTML(simulation.title)}" placeholder="e.g., Run a community grocery store" /></label>
+        <label class="form-field"><span>Description</span><textarea id="simulationDescriptionInput" rows="7" placeholder="Describe what students will experience, the roles they take, and how the simulation develops through the unit.">${escapeHTML(simulation.description)}</textarea></label>
+      </div>
+      ${simulation.enabled === false ? '<div class="workspace-disabled-note">No interactive simulation for this unit.</div>' : ""}
+    </div>`;
+
+  if (readOnlyMode) {
+    container.querySelectorAll("button, input, textarea").forEach(element => element.disabled = true);
+    return;
+  }
+
+  container.querySelectorAll("[data-simulation-choice]").forEach(button => {
+    button.addEventListener("click", () => {
+      simulation.enabled = button.dataset.simulationChoice === "yes";
+      autosaveUnit(unit);
+      renderUnitWorkspacePanel(unit, "simulation");
+    });
+  });
+
+  const title = container.querySelector("#simulationTitleInput");
+  const description = container.querySelector("#simulationDescriptionInput");
+
+  title?.addEventListener("input", () => {
+    simulation.title = title.value;
+    autosaveUnit(unit);
+  });
+  description?.addEventListener("input", () => {
+    simulation.description = description.value;
+    autosaveUnit(unit);
+  });
+}
+
+/* ============================================================
+   UNIT WORKSPACE — PROJECT + BLOOM
+============================================================ */
+
+function renderUnitWorkspaceProject(unit, container) {
+  const project = unit.workspace.project;
+  const workingSkills = (unit.curriculumLinks?.working || [])
+    .filter(record => record.type === "Skills & Procedures");
+  const selected = new Set(project.skillIds || []);
+
+  const card = document.createElement("div");
+  card.className = "workspace-editor-card";
+  card.innerHTML = `
+    <div class="workspace-editor-heading">
+      <div>
+        <p class="small-label">Optional Unit Element</p>
+        <h4>Unit Project</h4>
+        <p class="section-subtitle">Identify the culminating or ongoing project and the curriculum it intentionally demonstrates.</p>
+      </div>
+      <div class="segmented-choice" role="group" aria-label="Unit project">
+        <button type="button" data-project-choice="yes" class="${project.enabled === true ? "selected" : ""}">Yes</button>
+        <button type="button" data-project-choice="no" class="${project.enabled === false ? "selected" : ""}">No project</button>
+      </div>
+    </div>
+    <div id="projectFields" class="${project.enabled === false ? "hidden" : ""}">
+      <label class="form-field"><span>Project Title</span><input id="projectTitleInput" type="text" value="${escapeHTML(project.title)}" placeholder="Project title" /></label>
+      <label class="form-field"><span>Description</span><textarea id="projectDescriptionInput" rows="7" placeholder="Describe the project students will complete.">${escapeHTML(project.description)}</textarea></label>
+    </div>
+    ${project.enabled === false ? '<div class="workspace-disabled-note">No project for this unit.</div>' : ""}`;
+  container.appendChild(card);
+
+  if (project.enabled !== false) {
+    const skillsSection = document.createElement("section");
+    skillsSection.className = "project-skills-section";
+    skillsSection.innerHTML = `
+      <div class="workspace-subheading">
+        <div><p class="small-label">Working Curriculum</p><h4>Skills & Procedures represented in the project</h4></div>
+        <div class="ski-key"><span class="ski-green">Green</span><span class="ski-blue">Blue</span><span class="ski-black">Black</span></div>
+      </div>
+      <p class="section-subtitle">The highlighted verb is classified using your Bloom reference. You can override the classification at any time. Selected items will flow into Assessments in Release C.</p>`;
+
+    if (!workingSkills.length) {
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "No Skills & Procedures are currently selected in Working Curriculum.";
+      skillsSection.appendChild(empty);
+    } else {
+      const list = document.createElement("div");
+      list.className = "project-skill-list";
+
+      workingSkills.forEach(record => {
+        const analysis = analyzeCurriculumVerb(record.text);
+        const level = getCurriculumBloomLevel(record, getActiveUser(), analysis);
+        const band = getBloomBand(level);
+        const label = document.createElement("label");
+        label.className = `project-skill-card project-skill-${band}`;
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = selected.has(record.id);
+        checkbox.disabled = readOnlyMode;
+
+        const copy = document.createElement("div");
+        copy.className = "project-skill-copy";
+        copy.appendChild(makeCurriculumText(record, getActiveUser()));
+
+        const meta = document.createElement("div");
+        meta.className = "project-skill-meta";
+        meta.innerHTML = `<span>${escapeHTML(level || "Teacher classification needed")}</span><span>${band === "green" ? "Green · Remember / Understand" : band === "blue" ? "Blue · Apply / Analyze" : band === "black" ? "Black · Evaluate / Create" : "Bloom level not assigned"}</span>`;
+        copy.appendChild(meta);
+
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) selected.add(record.id);
+          else selected.delete(record.id);
+          project.skillIds = [...selected];
+          autosaveUnit(unit);
+          label.classList.toggle("selected", checkbox.checked);
+        });
+
+        label.classList.toggle("selected", checkbox.checked);
+        label.append(checkbox, copy);
+        list.appendChild(label);
+      });
+
+      skillsSection.appendChild(list);
+    }
+
+    container.appendChild(skillsSection);
+  }
+
+  if (readOnlyMode) {
+    container.querySelectorAll("button, input, textarea, select").forEach(element => element.disabled = true);
+    return;
+  }
+
+  container.querySelectorAll("[data-project-choice]").forEach(button => {
+    button.addEventListener("click", () => {
+      project.enabled = button.dataset.projectChoice === "yes";
+      autosaveUnit(unit);
+      renderUnitWorkspacePanel(unit, "project");
+    });
+  });
+
+  const title = container.querySelector("#projectTitleInput");
+  const description = container.querySelector("#projectDescriptionInput");
+  title?.addEventListener("input", () => {
+    project.title = title.value;
+    autosaveUnit(unit);
+  });
+  description?.addEventListener("input", () => {
+    project.description = description.value;
+    autosaveUnit(unit);
+  });
+}
+
+/* ============================================================
+   UNIT WORKSPACE — REUSABLE RESOURCES
+============================================================ */
+
+function resourceKindLabel(resource) {
+  if (resource.kind === "reference") {
+    return resource.referenceKind === "book" ? "Reference · Book" : "Reference · Online Resource";
+  }
+  if (resource.kind === "physical") return "Physical Object";
+  if (resource.kind === "book") return "Book";
+  return "Online Resource";
+}
+
+function resourceSecondaryText(resource) {
+  if (resource.kind === "physical") return resource.location || resource.notes || "Physical classroom resource";
+  if (resource.kind === "book" || (resource.kind === "reference" && resource.referenceKind === "book")) {
+    const citation = [resource.author, resource.publisher, resource.year].filter(Boolean).join(" · ");
+    return citation || resource.notes || "Book";
+  }
+  return resource.url || resource.notes || "Online resource";
+}
+
+function renderUnitWorkspaceResources(unit, container) {
+  const user = getActiveUser();
+  const linked = new Set(unit.workspace.resourceIds || []);
+
+  const header = document.createElement("div");
+  header.className = "section-heading-row compact-heading-row";
+  header.innerHTML = `<div><h4>Resources Used in This Unit</h4><p class="section-subtitle">Resources are saved to your reusable library, then linked to any units that use them.</p></div>`;
+
+  if (!readOnlyMode) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "primary-button";
+    add.textContent = "+ Add New";
+    add.addEventListener("click", () => {
+      workspaceResourceEditorId = "__new__";
+      renderUnitWorkspacePanel(unit, "resources");
+    });
+    header.appendChild(add);
+  }
+  container.appendChild(header);
+
+  if (workspaceResourceEditorId && !readOnlyMode) {
+    renderResourceEditor(unit, container, workspaceResourceEditorId);
+    return;
+  }
+
+  const linkedRecords = user.resourceLibrary.filter(resource => linked.has(resource.id));
+  if (!linkedRecords.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No resources have been linked to this unit yet.";
+    container.appendChild(empty);
+  } else {
+    const list = document.createElement("div");
+    list.className = "resource-card-list";
+    linkedRecords.forEach(resource => list.appendChild(makeResourceCard(unit, resource, true)));
+    container.appendChild(list);
+  }
+
+  if (readOnlyMode) return;
+
+  const libraryHeading = document.createElement("div");
+  libraryHeading.className = "workspace-subheading";
+  libraryHeading.innerHTML = `<div><p class="small-label">Reusable Library</p><h4>Saved Resources</h4></div>`;
+  container.appendChild(libraryHeading);
+
+  if (!user.resourceLibrary.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Your reusable resource library is empty.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const library = document.createElement("div");
+  library.className = "resource-library-list";
+  user.resourceLibrary.forEach(resource => library.appendChild(makeResourceCard(unit, resource, false)));
+  container.appendChild(library);
+}
+
+function makeResourceCard(unit, resource, linkedOnly) {
+  const linked = (unit.workspace.resourceIds || []).includes(resource.id);
+  const card = document.createElement("article");
+  card.className = "resource-card";
+
+  const copy = document.createElement("div");
+  copy.className = "resource-card-copy";
+  copy.innerHTML = `<span class="resource-kind">${escapeHTML(resourceKindLabel(resource))}</span><strong>${escapeHTML(resource.title)}</strong><small>${escapeHTML(resourceSecondaryText(resource))}</small>`;
+  card.appendChild(copy);
+
+  if (!readOnlyMode) {
+    const actions = document.createElement("div");
+    actions.className = "resource-card-actions";
+
+    const linkButton = document.createElement("button");
+    linkButton.type = "button";
+    linkButton.className = linked ? "secondary-button resource-linked" : "secondary-button";
+    linkButton.textContent = linked ? "✓ Used in Unit" : "Use in Unit";
+    linkButton.addEventListener("click", () => {
+      const ids = new Set(unit.workspace.resourceIds || []);
+      if (ids.has(resource.id)) ids.delete(resource.id);
+      else ids.add(resource.id);
+      unit.workspace.resourceIds = [...ids];
+      autosaveUnit(unit);
+      renderUnitWorkspacePanel(unit, "resources");
+    });
+
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "text-button";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => {
+      workspaceResourceEditorId = resource.id;
+      renderUnitWorkspacePanel(unit, "resources");
+    });
+
+    actions.append(linkButton, edit);
+    card.appendChild(actions);
+  }
+
+  if (linkedOnly) card.classList.add("linked-resource");
+  return card;
+}
+
+function renderResourceEditor(unit, container, resourceId) {
+  const user = getActiveUser();
+  const existing = resourceId === "__new__"
+    ? null
+    : user.resourceLibrary.find(resource => resource.id === resourceId);
+  const resource = existing ? structuredCloneSafe(existing) : {
+    ...normalizeResourceRecord({ title: "New Resource", kind: "online" }),
+    title: ""
+  };
+
+  const editor = document.createElement("form");
+  editor.className = "workspace-inline-editor resource-editor";
+  editor.innerHTML = `
+    <div class="workspace-inline-editor-heading">
+      <div><p class="small-label">${existing ? "Edit Resource" : "New Resource"}</p><h4>${existing ? escapeHTML(existing.title) : "Add a reusable resource"}</h4></div>
+      <button type="button" class="text-button" data-resource-cancel>Cancel</button>
+    </div>
+    <div class="form-grid two-column-grid">
+      <label class="form-field"><span>Resource Type</span>
+        <select data-resource-kind>
+          <option value="reference" ${resource.kind === "reference" ? "selected" : ""}>Reference</option>
+          <option value="physical" ${resource.kind === "physical" ? "selected" : ""}>Physical Object</option>
+          <option value="online" ${resource.kind === "online" ? "selected" : ""}>Online Resource</option>
+          <option value="book" ${resource.kind === "book" ? "selected" : ""}>Book</option>
+        </select>
+      </label>
+      <label class="form-field"><span>Title <small>(required)</small></span><input data-resource-title type="text" value="${escapeHTML(resource.title)}" required /></label>
+    </div>
+    <label class="form-field resource-reference-kind"><span>Reference Type</span>
+      <select data-resource-reference-kind>
+        <option value="book" ${resource.referenceKind === "book" ? "selected" : ""}>Book</option>
+        <option value="online" ${resource.referenceKind !== "book" ? "selected" : ""}>Online Resource</option>
+      </select>
+    </label>
+    <div class="resource-book-fields form-grid two-column-grid">
+      <label class="form-field"><span>Author</span><input data-resource-author type="text" value="${escapeHTML(resource.author)}" /></label>
+      <label class="form-field"><span>Publisher</span><input data-resource-publisher type="text" value="${escapeHTML(resource.publisher)}" /></label>
+      <label class="form-field"><span>Year</span><input data-resource-year type="text" value="${escapeHTML(resource.year)}" /></label>
+      <label class="form-field"><span>Edition</span><input data-resource-edition type="text" value="${escapeHTML(resource.edition)}" /></label>
+    </div>
+    <label class="form-field resource-url-field"><span>Link</span><input data-resource-url type="url" value="${escapeHTML(resource.url)}" placeholder="https://..." /></label>
+    <label class="form-field resource-location-field"><span>Location</span><input data-resource-location type="text" value="${escapeHTML(resource.location)}" placeholder="Shelf, cupboard, classroom, etc." /></label>
+    <label class="form-field"><span>Notes</span><textarea data-resource-notes rows="4">${escapeHTML(resource.notes)}</textarea></label>
+    <div class="modal-actions compact-actions">
+      ${existing ? '<button type="button" class="danger-text-button" data-resource-delete>Delete Resource</button>' : ""}
+      <button type="submit" class="primary-button">${existing ? "Save Changes" : "Add Resource"}</button>
+    </div>`;
+
+  container.prepend(editor);
+
+  const syncFields = () => {
+    const kind = editor.querySelector("[data-resource-kind]").value;
+    const referenceKind = editor.querySelector("[data-resource-reference-kind]").value;
+    const isReference = kind === "reference";
+    const isBook = kind === "book" || (isReference && referenceKind === "book");
+    const isOnline = kind === "online" || (isReference && referenceKind === "online");
+    const isPhysical = kind === "physical";
+    editor.querySelector(".resource-reference-kind").classList.toggle("hidden", !isReference);
+    editor.querySelector(".resource-book-fields").classList.toggle("hidden", !isBook);
+    editor.querySelector(".resource-url-field").classList.toggle("hidden", !isOnline);
+    editor.querySelector(".resource-location-field").classList.toggle("hidden", !isPhysical);
+  };
+
+  editor.querySelector("[data-resource-kind]").addEventListener("change", syncFields);
+  editor.querySelector("[data-resource-reference-kind]").addEventListener("change", syncFields);
+  syncFields();
+
+  editor.querySelector("[data-resource-cancel]").addEventListener("click", () => {
+    workspaceResourceEditorId = null;
+    renderUnitWorkspacePanel(unit, "resources");
+  });
+
+  editor.addEventListener("submit", event => {
+    event.preventDefault();
+    const title = editor.querySelector("[data-resource-title]").value.trim();
+    if (!title) {
+      alert("Please give this resource a title.");
+      return;
+    }
+
+    const saved = normalizeResourceRecord({
+      ...resource,
+      id: existing?.id || makeId("resource"),
+      title,
+      kind: editor.querySelector("[data-resource-kind]").value,
+      referenceKind: editor.querySelector("[data-resource-reference-kind]").value,
+      author: editor.querySelector("[data-resource-author]").value,
+      publisher: editor.querySelector("[data-resource-publisher]").value,
+      year: editor.querySelector("[data-resource-year]").value,
+      edition: editor.querySelector("[data-resource-edition]").value,
+      url: editor.querySelector("[data-resource-url]").value,
+      location: editor.querySelector("[data-resource-location]").value,
+      notes: editor.querySelector("[data-resource-notes]").value,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+
+    const index = user.resourceLibrary.findIndex(item => item.id === saved.id);
+    if (index >= 0) user.resourceLibrary[index] = saved;
+    else user.resourceLibrary.push(saved);
+
+    if (!(unit.workspace.resourceIds || []).includes(saved.id)) {
+      unit.workspace.resourceIds.push(saved.id);
+    }
+
+    workspaceResourceEditorId = null;
+    autosaveUnit(unit);
+    renderUnitWorkspacePanel(unit, "resources");
+  });
+
+  editor.querySelector("[data-resource-delete]")?.addEventListener("click", () => {
+    if (!confirm(`Delete “${existing.title}” from your reusable resource library?`)) return;
+    user.resourceLibrary = user.resourceLibrary.filter(item => item.id !== existing.id);
+    user.units.forEach(savedUnit => {
+      savedUnit.workspace.resourceIds = (savedUnit.workspace.resourceIds || []).filter(id => id !== existing.id);
+    });
+    workspaceResourceEditorId = null;
+    saveData();
+    renderUnitWorkspacePanel(unit, "resources");
+  });
+}
+
+/* ============================================================
+   UNIT WORKSPACE — LEARNING MODALITIES
+============================================================ */
+
+function renderUnitWorkspaceLearningModalities(unit, container) {
+  const user = getActiveUser();
+  const used = new Set(unit.workspace.learningModalityIds || []);
+
+  const header = document.createElement("div");
+  header.className = "section-heading-row compact-heading-row";
+  header.innerHTML = `<div><h4>Learning Modalities</h4><p class="section-subtitle">Build a reusable library of ways students work and learn. Lesson agenda parts will link to these later.</p></div>`;
+
+  if (!readOnlyMode) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "primary-button";
+    add.textContent = "+ Add Modality";
+    add.addEventListener("click", () => {
+      workspaceModalityEditorId = "__new__";
+      renderUnitWorkspacePanel(unit, "learningModalities");
+    });
+    header.appendChild(add);
+  }
+  container.appendChild(header);
+
+  if (workspaceModalityEditorId && !readOnlyMode) {
+    renderModalityEditor(unit, container, workspaceModalityEditorId);
+    return;
+  }
+
+  if (!user.learningModalities.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No learning modalities saved yet. Add your own when you're ready.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "modality-grid";
+
+  user.learningModalities.forEach(modality => {
+    const card = document.createElement("article");
+    card.className = `modality-card ${used.has(modality.id) ? "selected" : ""}`;
+    card.innerHTML = `<div><strong>${escapeHTML(modality.title)}</strong><p>${escapeHTML(modality.description || "No description yet.")}</p></div>`;
+
+    if (!readOnlyMode) {
+      const actions = document.createElement("div");
+      actions.className = "modality-actions";
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "secondary-button";
+      toggle.textContent = used.has(modality.id) ? "✓ Used in Unit" : "Use in Unit";
+      toggle.addEventListener("click", () => {
+        if (used.has(modality.id)) used.delete(modality.id);
+        else used.add(modality.id);
+        unit.workspace.learningModalityIds = [...used];
+        autosaveUnit(unit);
+        renderUnitWorkspacePanel(unit, "learningModalities");
+      });
+
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "text-button";
+      edit.textContent = "Edit";
+      edit.addEventListener("click", () => {
+        workspaceModalityEditorId = modality.id;
+        renderUnitWorkspacePanel(unit, "learningModalities");
+      });
+
+      actions.append(toggle, edit);
+      card.appendChild(actions);
+    }
+
+    list.appendChild(card);
+  });
+  container.appendChild(list);
+}
+
+function renderModalityEditor(unit, container, modalityId) {
+  const user = getActiveUser();
+  const existing = modalityId === "__new__" ? null : user.learningModalities.find(item => item.id === modalityId);
+
+  const form = document.createElement("form");
+  form.className = "workspace-inline-editor";
+  form.innerHTML = `
+    <div class="workspace-inline-editor-heading"><div><p class="small-label">${existing ? "Edit" : "New"}</p><h4>Learning Modality</h4></div><button type="button" class="text-button" data-modality-cancel>Cancel</button></div>
+    <label class="form-field"><span>Title <small>(required)</small></span><input data-modality-title type="text" value="${escapeHTML(existing?.title || "")}" placeholder="Small group work" required /></label>
+    <label class="form-field"><span>Description</span><textarea data-modality-description rows="5" placeholder="Describe what this learning setup looks like in your classroom.">${escapeHTML(existing?.description || "")}</textarea></label>
+    <div class="modal-actions compact-actions">${existing ? '<button type="button" class="danger-text-button" data-modality-delete>Delete</button>' : ""}<button type="submit" class="primary-button">Save Modality</button></div>`;
+  container.prepend(form);
+
+  form.querySelector("[data-modality-cancel]").addEventListener("click", () => {
+    workspaceModalityEditorId = null;
+    renderUnitWorkspacePanel(unit, "learningModalities");
+  });
+
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const title = form.querySelector("[data-modality-title]").value.trim();
+    if (!title) return;
+    const saved = normalizeLearningModality({
+      ...existing,
+      id: existing?.id || makeId("modality"),
+      title,
+      description: form.querySelector("[data-modality-description]").value,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    const index = user.learningModalities.findIndex(item => item.id === saved.id);
+    if (index >= 0) user.learningModalities[index] = saved;
+    else user.learningModalities.push(saved);
+    if (!(unit.workspace.learningModalityIds || []).includes(saved.id)) unit.workspace.learningModalityIds.push(saved.id);
+    workspaceModalityEditorId = null;
+    autosaveUnit(unit);
+    renderUnitWorkspacePanel(unit, "learningModalities");
+  });
+
+  form.querySelector("[data-modality-delete]")?.addEventListener("click", () => {
+    if (!confirm(`Delete “${existing.title}” from your saved modalities?`)) return;
+    user.learningModalities = user.learningModalities.filter(item => item.id !== existing.id);
+    user.units.forEach(savedUnit => {
+      savedUnit.workspace.learningModalityIds = (savedUnit.workspace.learningModalityIds || []).filter(id => id !== existing.id);
+    });
+    workspaceModalityEditorId = null;
+    saveData();
+    renderUnitWorkspacePanel(unit, "learningModalities");
+  });
+}
+
+/* ============================================================
+   UNIT WORKSPACE — INDIGENOUS VOICES RESOURCE LIBRARY
+============================================================ */
+
+function renderUnitWorkspaceIndigenousVoices(unit, container) {
+  const user = getActiveUser();
+  const linked = new Set(unit.workspace.indigenousVoiceResourceIds || []);
+
+  const header = document.createElement("div");
+  header.className = "section-heading-row compact-heading-row";
+  header.innerHTML = `<div><h4>Indigenous Voices</h4><p class="section-subtitle">A reusable resource collection tagged across grades and subjects so respectful, relevant resources are not trapped inside one unit.</p></div>`;
+  if (!readOnlyMode) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "primary-button";
+    add.textContent = "+ Add Resource";
+    add.addEventListener("click", () => {
+      workspaceIndigenousEditorId = "__new__";
+      renderUnitWorkspacePanel(unit, "indigenousVoices");
+    });
+    header.appendChild(add);
+  }
+  container.appendChild(header);
+
+  if (workspaceIndigenousEditorId && !readOnlyMode) {
+    renderIndigenousResourceEditor(unit, container, workspaceIndigenousEditorId);
+    return;
+  }
+
+  const ordered = [...user.indigenousResources].sort((a, b) => {
+    const score = resource => {
+      const gradeMatch = (resource.grades || []).some(grade => unit.classSpec.grades.includes(grade));
+      const subjectMatch = (resource.subjects || []).some(subject => subject.toLowerCase() === unit.classSpec.subject.toLowerCase());
+      return gradeMatch && subjectMatch ? 3 : subjectMatch ? 2 : gradeMatch ? 1 : 0;
+    };
+    return score(b) - score(a) || a.title.localeCompare(b.title);
+  });
+
+  if (!ordered.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No Indigenous Voices resources have been saved yet.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "indigenous-resource-list";
+
+  ordered.forEach(resource => {
+    const card = document.createElement("article");
+    card.className = `indigenous-resource-card ${linked.has(resource.id) ? "selected" : ""}`;
+    const tags = [
+      ...(resource.grades || []),
+      ...(resource.subjects || [])
+    ];
+    card.innerHTML = `
+      <div class="indigenous-resource-copy">
+        <span class="resource-kind">${escapeHTML(resourceKindLabel(resource))}</span>
+        <strong>${escapeHTML(resource.title)}</strong>
+        ${resource.description ? `<p>${escapeHTML(resource.description)}</p>` : ""}
+        <div class="resource-tag-row">${tags.map(tag => `<span>${escapeHTML(tag)}</span>`).join("")}</div>
+      </div>`;
+
+    if (!readOnlyMode) {
+      const actions = document.createElement("div");
+      actions.className = "resource-card-actions";
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "secondary-button";
+      toggle.textContent = linked.has(resource.id) ? "✓ Linked to Unit" : "Link to Unit";
+      toggle.addEventListener("click", () => {
+        if (linked.has(resource.id)) linked.delete(resource.id);
+        else linked.add(resource.id);
+        unit.workspace.indigenousVoiceResourceIds = [...linked];
+        autosaveUnit(unit);
+        renderUnitWorkspacePanel(unit, "indigenousVoices");
+      });
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "text-button";
+      edit.textContent = "Edit";
+      edit.addEventListener("click", () => {
+        workspaceIndigenousEditorId = resource.id;
+        renderUnitWorkspacePanel(unit, "indigenousVoices");
+      });
+      actions.append(toggle, edit);
+      card.appendChild(actions);
+    }
+    list.appendChild(card);
+  });
+  container.appendChild(list);
+}
+
+function renderIndigenousResourceEditor(unit, container, resourceId) {
+  const user = getActiveUser();
+  const existing = resourceId === "__new__" ? null : user.indigenousResources.find(item => item.id === resourceId);
+  const resource = existing ? structuredCloneSafe(existing) : {
+    ...normalizeIndigenousResource({ title: "New Resource", kind: "online", grades: unit.classSpec.grades, subjects: [unit.classSpec.subject] }),
+    title: ""
+  };
+
+  const gradeOptions = [...new Set([...DEFAULT_GRADES, ...(user.customGrades || []), ...unit.classSpec.grades])];
+  const subjectOptions = [...new Set([...DEFAULT_SUBJECTS, ...(user.customSubjects || []), unit.classSpec.subject].filter(Boolean))];
+
+  const form = document.createElement("form");
+  form.className = "workspace-inline-editor indigenous-editor";
+  form.innerHTML = `
+    <div class="workspace-inline-editor-heading"><div><p class="small-label">${existing ? "Edit" : "New"}</p><h4>Indigenous Voices Resource</h4></div><button type="button" class="text-button" data-indigenous-cancel>Cancel</button></div>
+    <div class="form-grid two-column-grid">
+      <label class="form-field"><span>Resource Type</span><select data-indigenous-kind>
+        <option value="online" ${resource.kind === "online" ? "selected" : ""}>Online Resource</option>
+        <option value="book" ${resource.kind === "book" ? "selected" : ""}>Book</option>
+        <option value="physical" ${resource.kind === "physical" ? "selected" : ""}>Physical Object</option>
+        <option value="reference" ${resource.kind === "reference" ? "selected" : ""}>Reference</option>
+      </select></label>
+      <label class="form-field"><span>Title <small>(required)</small></span><input data-indigenous-title type="text" value="${escapeHTML(resource.title)}" required /></label>
+    </div>
+    <label class="form-field"><span>Description</span><textarea data-indigenous-description rows="4">${escapeHTML(resource.description || "")}</textarea></label>
+    <label class="form-field"><span>Link <small>(optional)</small></span><input data-indigenous-url type="url" value="${escapeHTML(resource.url || "")}" placeholder="https://..." /></label>
+    <label class="form-field"><span>Location <small>(optional)</small></span><input data-indigenous-location type="text" value="${escapeHTML(resource.location || "")}" /></label>
+    <div class="form-grid two-column-grid">
+      <label class="form-field"><span>Author</span><input data-indigenous-author type="text" value="${escapeHTML(resource.author || "")}" /></label>
+      <label class="form-field"><span>Publisher</span><input data-indigenous-publisher type="text" value="${escapeHTML(resource.publisher || "")}" /></label>
+      <label class="form-field"><span>Year</span><input data-indigenous-year type="text" value="${escapeHTML(resource.year || "")}" /></label>
+      <label class="form-field"><span>Edition</span><input data-indigenous-edition type="text" value="${escapeHTML(resource.edition || "")}" /></label>
+    </div>
+    <fieldset class="form-field"><legend>Grade Tags</legend><div class="tag-checkbox-grid">${gradeOptions.map(grade => `<label><input type="checkbox" data-indigenous-grade value="${escapeHTML(grade)}" ${(resource.grades || []).includes(grade) ? "checked" : ""}><span>${escapeHTML(grade)}</span></label>`).join("")}</div></fieldset>
+    <fieldset class="form-field"><legend>Subject Tags</legend><div class="tag-checkbox-grid">${subjectOptions.map(subject => `<label><input type="checkbox" data-indigenous-subject value="${escapeHTML(subject)}" ${(resource.subjects || []).includes(subject) ? "checked" : ""}><span>${escapeHTML(subject)}</span></label>`).join("")}</div></fieldset>
+    <label class="form-field"><span>Notes</span><textarea data-indigenous-notes rows="4">${escapeHTML(resource.notes || "")}</textarea></label>
+    <div class="modal-actions compact-actions">${existing ? '<button type="button" class="danger-text-button" data-indigenous-delete>Delete Resource</button>' : ""}<button type="submit" class="primary-button">Save Resource</button></div>`;
+  container.prepend(form);
+
+  form.querySelector("[data-indigenous-cancel]").addEventListener("click", () => {
+    workspaceIndigenousEditorId = null;
+    renderUnitWorkspacePanel(unit, "indigenousVoices");
+  });
+
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const title = form.querySelector("[data-indigenous-title]").value.trim();
+    if (!title) return;
+    const grades = [...form.querySelectorAll("[data-indigenous-grade]:checked")].map(input => input.value);
+    const subjects = [...form.querySelectorAll("[data-indigenous-subject]:checked")].map(input => input.value);
+    const saved = normalizeIndigenousResource({
+      ...resource,
+      id: existing?.id || makeId("indigenous-resource"),
+      title,
+      kind: form.querySelector("[data-indigenous-kind]").value,
+      description: form.querySelector("[data-indigenous-description]").value,
+      url: form.querySelector("[data-indigenous-url]").value,
+      location: form.querySelector("[data-indigenous-location]").value,
+      author: form.querySelector("[data-indigenous-author]").value,
+      publisher: form.querySelector("[data-indigenous-publisher]").value,
+      year: form.querySelector("[data-indigenous-year]").value,
+      edition: form.querySelector("[data-indigenous-edition]").value,
+      notes: form.querySelector("[data-indigenous-notes]").value,
+      grades,
+      subjects,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    const index = user.indigenousResources.findIndex(item => item.id === saved.id);
+    if (index >= 0) user.indigenousResources[index] = saved;
+    else user.indigenousResources.push(saved);
+    if (!(unit.workspace.indigenousVoiceResourceIds || []).includes(saved.id)) unit.workspace.indigenousVoiceResourceIds.push(saved.id);
+    workspaceIndigenousEditorId = null;
+    autosaveUnit(unit);
+    renderUnitWorkspacePanel(unit, "indigenousVoices");
+  });
+
+  form.querySelector("[data-indigenous-delete]")?.addEventListener("click", () => {
+    if (!confirm(`Delete “${existing.title}” from Indigenous Voices?`)) return;
+    user.indigenousResources = user.indigenousResources.filter(item => item.id !== existing.id);
+    user.units.forEach(savedUnit => {
+      savedUnit.workspace.indigenousVoiceResourceIds = (savedUnit.workspace.indigenousVoiceResourceIds || []).filter(id => id !== existing.id);
+    });
+    workspaceIndigenousEditorId = null;
+    saveData();
+    renderUnitWorkspacePanel(unit, "indigenousVoices");
+  });
+}
+
+/* ============================================================
+   UNIT WORKSPACE — FIELD TRIPS
+============================================================ */
+
+function renderUnitWorkspaceFieldTrips(unit, container) {
+  const trips = unit.workspace.fieldTrips || [];
+
+  const header = document.createElement("div");
+  header.className = "section-heading-row compact-heading-row";
+  header.innerHTML = `<div><h4>Field Trips</h4><p class="section-subtitle">Field trips can replace scheduled unit lessons without deleting the original lesson record.</p></div>`;
+  if (!readOnlyMode) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "primary-button";
+    add.textContent = "+ Add Field Trip";
+    add.addEventListener("click", () => {
+      workspaceFieldTripEditorId = "__new__";
+      renderUnitWorkspacePanel(unit, "fieldTrips");
+    });
+    header.appendChild(add);
+  }
+  container.appendChild(header);
+
+  if (workspaceFieldTripEditorId && !readOnlyMode) {
+    renderFieldTripEditor(unit, container, workspaceFieldTripEditorId);
+    return;
+  }
+
+  if (!trips.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No field trips have been added to this unit.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "field-trip-list";
+  trips
+    .slice()
+    .sort((a, b) => (a.startDate || "9999").localeCompare(b.startDate || "9999"))
+    .forEach(trip => {
+      const card = document.createElement("article");
+      card.className = "field-trip-card";
+      const curriculumCount = (trip.curriculumIds || []).length;
+      const dateText = trip.startDate === trip.endDate || !trip.endDate
+        ? formatDate(trip.startDate)
+        : `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`;
+      card.innerHTML = `
+        <div class="field-trip-icon">↗</div>
+        <div class="field-trip-copy">
+          <span class="resource-kind">${trip.manualOverride ? "Manual date override" : "Unit calendar date"}</span>
+          <strong>${escapeHTML(trip.title)}</strong>
+          <p>${escapeHTML(dateText)}${trip.location ? ` · ${escapeHTML(trip.location)}` : ""}</p>
+          ${trip.purpose ? `<small>${escapeHTML(trip.purpose)}</small>` : ""}
+          <div class="resource-tag-row"><span>${curriculumCount} curriculum connection${curriculumCount === 1 ? "" : "s"}</span></div>
+        </div>`;
+
+      if (!readOnlyMode) {
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.className = "secondary-button";
+        edit.textContent = "Edit";
+        edit.addEventListener("click", () => {
+          workspaceFieldTripEditorId = trip.id;
+          renderUnitWorkspacePanel(unit, "fieldTrips");
+        });
+        card.appendChild(edit);
+      }
+      list.appendChild(card);
+    });
+  container.appendChild(list);
+}
+
+function unitLessonDateOptions(unit) {
+  return [...new Set((unit.lessons || []).map(lesson => lesson.dateKey).filter(Boolean))].sort();
+}
+
+function renderFieldTripEditor(unit, container, fieldTripId) {
+  const user = getActiveUser();
+  const existing = fieldTripId === "__new__" ? null : (unit.workspace.fieldTrips || []).find(item => item.id === fieldTripId);
+  const lessonDates = unitLessonDateOptions(unit);
+  const defaultDate = lessonDates[0] || unit.startDate || "";
+  const trip = existing ? structuredCloneSafe(existing) : normalizeFieldTrip({ title: "", startDate: defaultDate, endDate: defaultDate });
+  const working = unit.curriculumLinks?.working || [];
+  const selectedCurriculum = new Set(trip.curriculumIds || []);
+  const range = getRelevantDateRange(user);
+
+  const form = document.createElement("form");
+  form.className = "workspace-inline-editor field-trip-editor";
+  form.innerHTML = `
+    <div class="workspace-inline-editor-heading"><div><p class="small-label">${existing ? "Edit" : "New"}</p><h4>Field Trip</h4></div><button type="button" class="text-button" data-fieldtrip-cancel>Cancel</button></div>
+    <label class="form-field"><span>Title <small>(required)</small></span><input data-fieldtrip-title type="text" value="${escapeHTML(trip.title)}" placeholder="Field trip title" required /></label>
+    <label class="form-field"><span>Description</span><textarea data-fieldtrip-description rows="4">${escapeHTML(trip.description)}</textarea></label>
+    <label class="form-field"><span>Purpose</span><textarea data-fieldtrip-purpose rows="4" placeholder="Why is this trip part of the unit?">${escapeHTML(trip.purpose)}</textarea></label>
+    <label class="form-field"><span>Location</span><input data-fieldtrip-location type="text" value="${escapeHTML(trip.location)}" /></label>
+
+    <div class="field-trip-date-mode">
+      <label class="manual-override-toggle"><input data-fieldtrip-manual type="checkbox" ${trip.manualOverride ? "checked" : ""}><span><strong>Manual date override</strong><small>Use any date in the school year, including weekends or Days Off.</small></span></label>
+    </div>
+
+    <div class="fieldtrip-unit-date-fields form-grid two-column-grid">
+      <label class="form-field"><span>Start Date</span><select data-fieldtrip-start-select>${lessonDates.map(date => `<option value="${date}" ${date === trip.startDate ? "selected" : ""}>${escapeHTML(formatLongDate(date))}</option>`).join("")}</select></label>
+      <label class="form-field"><span>End Date</span><select data-fieldtrip-end-select>${lessonDates.map(date => `<option value="${date}" ${date === trip.endDate ? "selected" : ""}>${escapeHTML(formatLongDate(date))}</option>`).join("")}</select></label>
+    </div>
+
+    <div class="fieldtrip-manual-date-fields form-grid two-column-grid">
+      <label class="form-field"><span>Start Date</span><input data-fieldtrip-start-input type="date" min="${escapeHTML(range?.start || "")}" max="${escapeHTML(range?.end || "")}" value="${escapeHTML(trip.startDate)}" /></label>
+      <label class="form-field"><span>End Date</span><input data-fieldtrip-end-input type="date" min="${escapeHTML(range?.start || "")}" max="${escapeHTML(range?.end || "")}" value="${escapeHTML(trip.endDate)}" /></label>
+    </div>
+
+    <section class="field-trip-curriculum-picker">
+      <div class="workspace-subheading"><div><p class="small-label">Curriculum Connections</p><h4>Working Curriculum</h4></div></div>
+      ${working.length ? '<div class="field-trip-curriculum-list"></div>' : '<p class="empty-state">No Working Curriculum is selected yet. Add curriculum from the Curriculum section, then return here.</p>'}
+    </section>
+
+    <div class="modal-actions compact-actions">${existing ? '<button type="button" class="danger-text-button" data-fieldtrip-delete>Delete Field Trip</button>' : ""}<button type="submit" class="primary-button">Save Field Trip</button></div>`;
+
+  container.prepend(form);
+
+  const curriculumList = form.querySelector(".field-trip-curriculum-list");
+  if (curriculumList) {
+    working.forEach(record => {
+      const label = document.createElement("label");
+      label.className = "field-trip-curriculum-item";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = record.id;
+      checkbox.checked = selectedCurriculum.has(record.id);
+      const copy = document.createElement("div");
+      copy.innerHTML = `<small>${escapeHTML(record.type)} · ${escapeHTML(record.organizingIdea)}</small><span>${escapeHTML(record.text)}</span>`;
+      label.append(checkbox, copy);
+      curriculumList.appendChild(label);
+    });
+  }
+
+  const syncMode = () => {
+    const manual = form.querySelector("[data-fieldtrip-manual]").checked;
+    form.querySelector(".fieldtrip-unit-date-fields").classList.toggle("hidden", manual);
+    form.querySelector(".fieldtrip-manual-date-fields").classList.toggle("hidden", !manual);
+  };
+  form.querySelector("[data-fieldtrip-manual]").addEventListener("change", syncMode);
+  syncMode();
+
+  form.querySelector("[data-fieldtrip-cancel]").addEventListener("click", () => {
+    workspaceFieldTripEditorId = null;
+    renderUnitWorkspacePanel(unit, "fieldTrips");
+  });
+
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const manualOverride = form.querySelector("[data-fieldtrip-manual]").checked;
+    const title = form.querySelector("[data-fieldtrip-title]").value.trim();
+    const startDate = manualOverride
+      ? form.querySelector("[data-fieldtrip-start-input]").value
+      : form.querySelector("[data-fieldtrip-start-select]").value;
+    const endDate = manualOverride
+      ? form.querySelector("[data-fieldtrip-end-input]").value
+      : form.querySelector("[data-fieldtrip-end-select]").value;
+
+    if (!title || !startDate || !endDate) {
+      alert("Please add a title and select the field trip date or date range.");
+      return;
+    }
+    if (endDate < startDate) {
+      alert("The field trip end date cannot be before the start date.");
+      return;
+    }
+    if (manualOverride && (
+      termsForDate(startDate, user).length === 0 ||
+      termsForDate(endDate, user).length === 0
+    )) {
+      alert("Manual override dates still need to fall within one of your saved School Terms.");
+      return;
+    }
+
+    const curriculumIds = [...form.querySelectorAll(".field-trip-curriculum-item input:checked")].map(input => input.value);
+    const saved = normalizeFieldTrip({
+      ...trip,
+      id: existing?.id || makeId("field-trip"),
+      title,
+      description: form.querySelector("[data-fieldtrip-description]").value,
+      purpose: form.querySelector("[data-fieldtrip-purpose]").value,
+      location: form.querySelector("[data-fieldtrip-location]").value,
+      startDate,
+      endDate,
+      manualOverride,
+      curriculumIds,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+
+    const index = unit.workspace.fieldTrips.findIndex(item => item.id === saved.id);
+    if (index >= 0) unit.workspace.fieldTrips[index] = saved;
+    else unit.workspace.fieldTrips.push(saved);
+
+    syncFieldTripOverrides(unit);
+    workspaceFieldTripEditorId = null;
+    autosaveUnit(unit);
+    renderUnitWorkspacePanel(unit, "fieldTrips");
+  });
+
+  form.querySelector("[data-fieldtrip-delete]")?.addEventListener("click", () => {
+    if (!confirm(`Delete the field trip “${existing.title}”? The underlying lesson records will be restored.`)) return;
+    unit.workspace.fieldTrips = unit.workspace.fieldTrips.filter(item => item.id !== existing.id);
+    syncFieldTripOverrides(unit);
+    workspaceFieldTripEditorId = null;
+    autosaveUnit(unit);
+    renderUnitWorkspacePanel(unit, "fieldTrips");
+  });
+}
+
+function getFieldTripsForDate(user, dateKey) {
+  const results = [];
+  (user?.units || []).forEach(unit => {
+    (unit.workspace?.fieldTrips || []).forEach(trip => {
+      if (isDateWithin(dateKey, trip.startDate, trip.endDate)) {
+        results.push({ unit, trip });
+      }
+    });
+  });
+  return results.sort((a, b) => a.unit.name.localeCompare(b.unit.name) || a.trip.title.localeCompare(b.trip.title));
+}
+
+function appendFieldTripDayCards(container, fieldTrips) {
+  fieldTrips.forEach(({ unit, trip }) => {
+    const card = document.createElement("div");
+    card.className = "day-detail-card day-detail-field-trip";
+    card.style.setProperty("--field-trip-colour", normalizeHexColour(unit.colour) || "#FF7043");
+
+    const title = document.createElement("strong");
+    title.textContent = `[FIELD TRIP] ${trip.title}`;
+    const meta = document.createElement("div");
+    meta.className = "term-meta";
+    meta.textContent = `${unit.name}${trip.location ? ` · ${trip.location}` : ""}${trip.manualOverride ? " · Manual date override" : ""}`;
+    card.append(title, meta);
+
+    if (trip.purpose) {
+      const purpose = document.createElement("p");
+      purpose.className = "field-trip-day-purpose";
+      purpose.textContent = trip.purpose;
+      card.appendChild(purpose);
+    }
+
+    container.appendChild(card);
+  });
+}
+
+function syncFieldTripOverrides(unit) {
+  (unit.lessons || []).forEach(lesson => {
+    if (lesson.override?.type === "fieldTrip") lesson.override = null;
+  });
+
+  const trips = (unit.workspace.fieldTrips || [])
+    .slice()
+    .sort((a, b) => (a.startDate || "9999").localeCompare(b.startDate || "9999"));
+
+  trips.forEach(trip => {
+    (unit.lessons || []).forEach(lesson => {
+      if (isDateWithin(lesson.dateKey, trip.startDate, trip.endDate) && !lesson.override) {
+        lesson.override = { type: "fieldTrip", fieldTripId: trip.id };
+      }
+    });
+  });
+}
+
+function getFieldTripForLesson(unit, lesson) {
+  if (lesson?.override?.type !== "fieldTrip") return null;
+  return (unit?.workspace?.fieldTrips || []).find(trip => trip.id === lesson.override.fieldTripId) || null;
+}
+
+function lessonDisplayTitleForUnit(unit, lesson) {
+  const trip = getFieldTripForLesson(unit, lesson);
+  if (trip) return `${Number(lesson.sequence) || 1} - [FIELD TRIP] ${trip.title}`;
+  return lessonDisplayTitle(lesson);
+}
+
+
 function renderUnitWorkspaceLessons(unit, container) {
   const intro = document.createElement("p");
   intro.className = "section-subtitle";
@@ -4033,7 +5579,7 @@ function renderUnitWorkspaceLessons(unit, container) {
       button.className = "unit-lesson-button";
 
       button.innerHTML =
-        `<strong>${escapeHTML(lessonDisplayTitle(lesson))}</strong>` +
+        `<strong>${escapeHTML(lessonDisplayTitleForUnit(unit, lesson))}</strong>` +
         `<span>${escapeHTML(formatLongDate(lesson.dateKey))}</span>` +
         `<small>${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))} · ` +
         `${escapeHTML(hoursLabel(lesson.durationMinutes))}</small>`;
@@ -4052,13 +5598,14 @@ function openLessonPlaceholder(unitId, lessonId) {
   const lesson = unit?.lessons.find(item => item.id === lessonId);
   if (!unit || !lesson) return;
   selectedLessonContext = { unitId, lessonId };
-  $("lessonPlaceholderHeading").textContent = `${lessonDisplayTitle(lesson)} — ${unit.name}`;
+  $("lessonPlaceholderHeading").textContent = `${lessonDisplayTitleForUnit(unit, lesson)} — ${unit.name}`;
   $("lessonPlaceholderMeta").textContent = `${formatLongDate(lesson.dateKey)} · ${formatTime(lesson.startTime)}–${formatTime(lesson.endTime)}`;
+  const fieldTrip = getFieldTripForLesson(unit, lesson);
   $("lessonPlaceholderDetails").innerHTML = `
     <div class="summary-card"><span class="summary-label">Class</span><strong>${escapeHTML(classLabel(unit.classSpec))}</strong></div>
     <div class="summary-card"><span class="summary-label">Allocated Time</span><strong>${escapeHTML(hoursLabel(lesson.durationMinutes))}</strong></div>
     <div class="summary-card"><span class="summary-label">Unit</span><strong>${escapeHTML(unit.name)}</strong></div>
-    <div class="summary-card"><span class="summary-label">Status</span><strong>Lesson plan not built</strong></div>`;
+    <div class="summary-card"><span class="summary-label">Status</span><strong>${fieldTrip ? `Overridden by field trip: ${escapeHTML(fieldTrip.title)}` : "Lesson plan not built"}</strong></div>`;
   $("startLessonPlannerButton").classList.toggle("hidden", readOnlyMode);
   lessonPlaceholderDialog.showModal();
 }
@@ -4246,7 +5793,7 @@ function buildReadableExportHTML(user, { title, includeRestoreData, includeReadO
     ? `<script id="teacherHQBackupData" type="application/json">${safeJSONForScript(fullAppData)}</script>`
     : "";
   const embeddedReadOnly = includeReadOnlyData
-    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 4, user })}</script>`
+    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 6, user })}</script>`
     : "";
 
   return `<!DOCTYPE html>
@@ -4290,9 +5837,49 @@ function buildReadableExceptionsHTML(user) {
 function buildReadableUnitsHTML(user) {
   return user.units.map(unit => {
     const scheduled = unit.lessons.reduce((sum, lesson) => sum + lesson.durationMinutes, 0);
-    const curriculum = unit.selectedCurriculum.map(record => `<li><strong>${escapeHTML(record.type)}:</strong> ${escapeHTML(record.text)}</li>`).join("");
-    const lessons = unit.lessons.map(lesson => `<div class="lesson" style="border-left-color:${escapeHTML(unit.colour || "#8C6CFF")};background:${escapeHTML(hexToRgba(unit.colour || "#8C6CFF", 0.10))}"><strong>${escapeHTML(lessonDisplayTitle(lesson))}</strong> · ${escapeHTML(formatDate(lesson.dateKey))} · ${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))}</div>`).join("");
-    return `<section class="card"><strong>${escapeHTML(unit.name)}</strong><p class="muted">${escapeHTML(classLabel(unit.classSpec))} · Target ${escapeHTML(hoursLabel(unit.targetMinutes))} · Scheduled ${escapeHTML(hoursLabel(scheduled))}</p>${curriculum ? `<ul>${curriculum}</ul>` : '<p class="muted">No curriculum selected.</p>'}${lessons || '<p class="muted">No lesson placeholders.</p>'}</section>`;
+    const curriculum = (unit.curriculumLinks?.working || unit.selectedCurriculum || [])
+      .map(record => `<li><strong>${escapeHTML(record.type)}:</strong> ${escapeHTML(record.text)}</li>`)
+      .join("");
+
+    const simulation = unit.workspace?.simulation;
+    const project = unit.workspace?.project;
+    const linkedResources = user.resourceLibrary
+      .filter(resource => (unit.workspace?.resourceIds || []).includes(resource.id))
+      .map(resource => `<li>${escapeHTML(resource.title)} <span class="muted">(${escapeHTML(resourceKindLabel(resource))})</span></li>`)
+      .join("");
+    const modalities = user.learningModalities
+      .filter(item => (unit.workspace?.learningModalityIds || []).includes(item.id))
+      .map(item => escapeHTML(item.title))
+      .join(", ");
+    const indigenous = user.indigenousResources
+      .filter(item => (unit.workspace?.indigenousVoiceResourceIds || []).includes(item.id))
+      .map(item => escapeHTML(item.title))
+      .join(", ");
+    const fieldTrips = (unit.workspace?.fieldTrips || []).map(trip => {
+      const dateLabel = trip.startDate === trip.endDate
+        ? formatDate(trip.startDate)
+        : `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`;
+      return `<li><strong>${escapeHTML(trip.title)}</strong> · ${escapeHTML(dateLabel)}${trip.location ? ` · ${escapeHTML(trip.location)}` : ""}</li>`;
+    }).join("");
+
+    const lessons = unit.lessons.map(lesson =>
+      `<div class="lesson" style="border-left-color:${escapeHTML(unit.colour || "#8C6CFF")};background:${escapeHTML(hexToRgba(unit.colour || "#8C6CFF", 0.10))}"><strong>${escapeHTML(lessonDisplayTitleForUnit(unit, lesson))}</strong> · ${escapeHTML(formatDate(lesson.dateKey))} · ${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))}</div>`
+    ).join("");
+
+    const unitContent = [
+      simulation?.enabled === true
+        ? `<p><strong>Simulation:</strong> ${escapeHTML(simulation.title || "Untitled simulation")}${simulation.description ? ` — ${escapeHTML(simulation.description)}` : ""}</p>`
+        : simulation?.enabled === false ? '<p class="muted">No interactive simulation for this unit.</p>' : "",
+      project?.enabled === true
+        ? `<p><strong>Project:</strong> ${escapeHTML(project.title || "Untitled project")}${project.description ? ` — ${escapeHTML(project.description)}` : ""}</p>`
+        : project?.enabled === false ? '<p class="muted">No project for this unit.</p>' : "",
+      linkedResources ? `<p><strong>Resources</strong></p><ul>${linkedResources}</ul>` : "",
+      fieldTrips ? `<p><strong>Field Trips</strong></p><ul>${fieldTrips}</ul>` : "",
+      modalities ? `<p><strong>Learning Modalities:</strong> ${modalities}</p>` : "",
+      indigenous ? `<p><strong>Indigenous Voices:</strong> ${indigenous}</p>` : ""
+    ].filter(Boolean).join("");
+
+    return `<section class="card"><strong>${escapeHTML(unit.name)}</strong><p class="muted">${escapeHTML(classLabel(unit.classSpec))} · Target ${escapeHTML(hoursLabel(unit.targetMinutes))} · Scheduled ${escapeHTML(hoursLabel(scheduled))}</p>${unitContent}${curriculum ? `<p><strong>Working Curriculum</strong></p><ul>${curriculum}</ul>` : '<p class="muted">No working curriculum selected.</p>'}${lessons || '<p class="muted">No lesson placeholders.</p>'}</section>`;
   }).join("");
 }
 
