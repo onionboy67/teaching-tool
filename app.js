@@ -25,11 +25,23 @@ const DEFAULT_SUBJECTS = [
 ];
 
 const WEEKDAYS = [
+  "Sunday",
   "Monday",
   "Tuesday",
   "Wednesday",
   "Thursday",
-  "Friday"
+  "Friday",
+  "Saturday"
+];
+
+const CALENDAR_WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday"
 ];
 
 /* ============================================================
@@ -117,6 +129,14 @@ const blockSubject =
 const splitGradeChoices =
   document.getElementById("splitGradeChoices");
 
+const blockDayChoices =
+  document.getElementById("blockDayChoices");
+
+const unplannedAlert =
+  document.getElementById("unplannedAlert");
+
+const unplannedAlertText =
+  document.getElementById("unplannedAlertText");
 
 /* ============================================================
    STORAGE
@@ -626,6 +646,10 @@ function renderTeacherHQ() {
 
   renderSchoolYearSummary(schoolYear);
   renderWeeklyScheduleDisplay(schoolYear);
+
+  // Re-render the calendar whenever the active user's
+  // school-year information changes.
+  renderCalendar();
 }
 
 
@@ -699,6 +723,9 @@ function renderCalendar() {
     calendarGrid.appendChild(empty);
   }
 
+  const schoolYear =
+    getActiveSchoolYear();
+
   for (
     let day = 1;
     day <= daysInMonth;
@@ -708,10 +735,16 @@ function renderCalendar() {
       document.createElement("div");
 
     cell.className = "day";
-    cell.textContent = day;
 
     const date =
       new Date(year, month, day);
+
+    const dayNumber =
+      document.createElement("span");
+
+    dayNumber.textContent = day;
+
+    cell.appendChild(dayNumber);
 
     const weekday =
       date.getDay();
@@ -729,8 +762,235 @@ function renderCalendar() {
       cell.classList.add("today");
     }
 
+    const unplannedBlocks =
+      getUnplannedBlocksForDate(
+        date,
+        schoolYear
+      );
+
+    if (unplannedBlocks.length > 0) {
+      cell.classList.add("has-unplanned");
+
+      const count =
+        document.createElement("span");
+
+      count.className =
+        "unplanned-count";
+
+      count.textContent =
+        unplannedBlocks.length;
+
+      cell.appendChild(count);
+
+      cell.title =
+        unplannedBlocks
+          .map(block => {
+            const grade =
+              gradeDisplay(block.grades);
+
+            const subject =
+              block.subject || "";
+
+            return (
+              `${grade} ${subject}`.trim() +
+              ` · ${formatTime(block.startTime)}` +
+              `–${formatTime(block.endTime)}` +
+              ` · Unplanned`
+            );
+          })
+          .join("\n");
+    }
+
     calendarGrid.appendChild(cell);
   }
+
+  renderUnplannedAlert(schoolYear);
+}
+
+
+/* ============================================================
+   UNPLANNED INSTRUCTIONAL BLOCKS
+============================================================ */
+
+function getUnplannedBlocksForDate(
+  date,
+  schoolYear
+) {
+  if (!schoolYear) {
+    return [];
+  }
+
+  if (
+    !schoolYear.startDate ||
+    !schoolYear.endDate
+  ) {
+    return [];
+  }
+
+  const startDate =
+    parseLocalDate(
+      schoolYear.startDate
+    );
+
+  const endDate =
+    parseLocalDate(
+      schoolYear.endDate
+    );
+
+  const comparisonDate =
+    new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    );
+
+  if (
+    comparisonDate < startDate ||
+    comparisonDate > endDate
+  ) {
+    return [];
+  }
+
+  const weekdayName =
+    CALENDAR_WEEKDAYS[
+      comparisonDate.getDay()
+    ];
+
+  const dateKey =
+    getLocalDateKey(
+      comparisonDate
+    );
+
+  return (
+    schoolYear.scheduleBlocks || []
+  ).filter(block => {
+
+    if (
+      block.weekday !== weekdayName ||
+      block.blockType !==
+        "Instructional Time"
+    ) {
+      return false;
+    }
+
+    const plannedDates =
+      Array.isArray(block.plannedDates)
+        ? block.plannedDates
+        : [];
+
+    return !plannedDates.includes(
+      dateKey
+    );
+  });
+}
+
+
+function renderUnplannedAlert(
+  schoolYear
+) {
+  if (!schoolYear) {
+    unplannedAlert.classList.add(
+      "hidden"
+    );
+
+    return;
+  }
+
+  const count =
+    countUnplannedOccurrences(
+      schoolYear
+    );
+
+  if (count === 0) {
+    unplannedAlert.classList.add(
+      "hidden"
+    );
+
+    return;
+  }
+
+  unplannedAlertText.textContent =
+    count === 1
+      ? "1 unplanned block needs attention"
+      : `${count} unplanned blocks need attention`;
+
+  unplannedAlert.classList.remove(
+    "hidden"
+  );
+}
+
+
+function countUnplannedOccurrences(
+  schoolYear
+) {
+  if (
+    !schoolYear ||
+    !schoolYear.startDate ||
+    !schoolYear.endDate
+  ) {
+    return 0;
+  }
+
+  const startDate =
+    parseLocalDate(
+      schoolYear.startDate
+    );
+
+  const endDate =
+    parseLocalDate(
+      schoolYear.endDate
+    );
+
+  let count = 0;
+
+  const date =
+    new Date(startDate);
+
+  while (date <= endDate) {
+    count +=
+      getUnplannedBlocksForDate(
+        date,
+        schoolYear
+      ).length;
+
+    date.setDate(
+      date.getDate() + 1
+    );
+  }
+
+  return count;
+}
+
+function getLocalDateKey(date) {
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() + 1
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      date.getDate()
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDate(
+  dateString
+) {
+  const [year, month, day] =
+    dateString
+      .split("-")
+      .map(Number);
+
+  return new Date(
+    year,
+    month - 1,
+    day
+  );
 }
 
 document
@@ -1072,6 +1332,22 @@ function openScheduleBlockDialog(blockId = null) {
   ).textContent =
     blockId ? "Edit Block" : "Add Block";
 
+  // New blocks default to Monday, 8:00–9:00 AM.
+  blockDayChoices
+    .querySelectorAll('input[type="checkbox"]')
+    .forEach(checkbox => {
+      checkbox.checked =
+        checkbox.value === "Monday";
+    });
+
+  document.getElementById(
+    "blockStartTime"
+  ).value = "08:00";
+
+  document.getElementById(
+    "blockEndTime"
+  ).value = "09:00";
+
   if (blockId) {
     const block =
       workingScheduleBlocks.find(
@@ -1082,9 +1358,35 @@ function openScheduleBlockDialog(blockId = null) {
       return;
     }
 
-    document.getElementById(
-      "blockDay"
-    ).value = block.weekday;
+    /*
+      If this block belongs to a repeating group,
+      load all of the days in that group.
+      Older single-day blocks still work.
+    */
+    const relatedBlocks =
+      block.repeatGroupId
+        ? workingScheduleBlocks.filter(
+            item =>
+              item.repeatGroupId ===
+              block.repeatGroupId
+          )
+        : [block];
+
+    const selectedDays =
+      relatedBlocks.map(
+        item => item.weekday
+      );
+
+    blockDayChoices
+      .querySelectorAll(
+        'input[type="checkbox"]'
+      )
+      .forEach(checkbox => {
+        checkbox.checked =
+          selectedDays.includes(
+            checkbox.value
+          );
+      });
 
     document.getElementById(
       "blockStartTime"
@@ -1094,7 +1396,8 @@ function openScheduleBlockDialog(blockId = null) {
       "blockEndTime"
     ).value = block.endTime;
 
-    blockType.value = block.blockType;
+    blockType.value =
+      block.blockType;
 
     document.getElementById(
       "blockLabel"
@@ -1107,7 +1410,8 @@ function openScheduleBlockDialog(blockId = null) {
       block.grades || [];
 
     if (grades.length > 1) {
-      splitClassCheckbox.checked = true;
+      splitClassCheckbox.checked =
+        true;
 
       populateSplitGradeChoices();
 
@@ -1117,10 +1421,13 @@ function openScheduleBlockDialog(blockId = null) {
         )
         .forEach(checkbox => {
           checkbox.checked =
-            grades.includes(checkbox.value);
+            grades.includes(
+              checkbox.value
+            );
         });
     } else {
-      splitClassCheckbox.checked = false;
+      splitClassCheckbox.checked =
+        false;
 
       blockGrade.value =
         grades[0] || "";
@@ -1365,10 +1672,21 @@ scheduleBlockForm.addEventListener(
   event => {
     event.preventDefault();
 
-    const weekday =
-      document.getElementById(
-        "blockDay"
-      ).value;
+    const selectedDays =
+      Array.from(
+        blockDayChoices.querySelectorAll(
+          'input[type="checkbox"]:checked'
+        )
+      ).map(
+        checkbox => checkbox.value
+      );
+
+    if (selectedDays.length === 0) {
+      alert(
+        "Please select at least one day."
+      );
+      return;
+    }
 
     const startTime =
       document.getElementById(
@@ -1410,14 +1728,20 @@ scheduleBlockForm.addEventListener(
       selectedBlockType ===
       "Instructional Time"
     ) {
-      subject = blockSubject.value;
+      subject =
+        blockSubject.value;
 
-      if (splitClassCheckbox.checked) {
+      if (
+        splitClassCheckbox.checked
+      ) {
         grades = Array.from(
-          splitGradeChoices.querySelectorAll(
-            'input[type="checkbox"]:checked'
-          )
-        ).map(input => input.value);
+          splitGradeChoices
+            .querySelectorAll(
+              'input[type="checkbox"]:checked'
+            )
+        ).map(
+          input => input.value
+        );
 
         if (grades.length < 2) {
           alert(
@@ -1427,53 +1751,100 @@ scheduleBlockForm.addEventListener(
         }
       } else {
         if (blockGrade.value) {
-          grades = [blockGrade.value];
+          grades = [
+            blockGrade.value
+          ];
         }
       }
 
       if (grades.length === 0) {
-        alert("Please select a grade.");
+        alert(
+          "Please select a grade."
+        );
         return;
       }
 
       if (!subject) {
-        alert("Please select a subject.");
+        alert(
+          "Please select a subject."
+        );
         return;
       }
     }
 
-    const block = {
-      id:
-        editingScheduleBlockId ||
-        makeId("block"),
+    /*
+      Each repeated schedule receives one shared group ID.
 
-      weekday,
-      startTime,
-      endTime,
-
-      blockType:
-        selectedBlockType,
-
-      label,
-      grades,
-      subject
-    };
+      That means Mon/Tue/Thu Math can behave as one
+      repeating schedule rule later.
+    */
+    let repeatGroupId =
+      makeId("repeat");
 
     if (editingScheduleBlockId) {
-      const index =
-        workingScheduleBlocks.findIndex(
+      const existingBlock =
+        workingScheduleBlocks.find(
           item =>
             item.id ===
             editingScheduleBlockId
         );
 
-      if (index >= 0) {
-        workingScheduleBlocks[index] =
-          block;
+      if (
+        existingBlock?.repeatGroupId
+      ) {
+        repeatGroupId =
+          existingBlock.repeatGroupId;
+
+        // Editing one member currently edits
+        // the whole repeating group.
+        workingScheduleBlocks =
+          workingScheduleBlocks.filter(
+            item =>
+              item.repeatGroupId !==
+              repeatGroupId
+          );
+      } else {
+        // Support blocks created before
+        // repeating groups existed.
+        workingScheduleBlocks =
+          workingScheduleBlocks.filter(
+            item =>
+              item.id !==
+              editingScheduleBlockId
+          );
       }
-    } else {
-      workingScheduleBlocks.push(block);
     }
+
+    selectedDays.forEach(
+      weekday => {
+        const block = {
+          id: makeId("block"),
+
+          repeatGroupId,
+
+          weekday,
+          startTime,
+          endTime,
+
+          blockType:
+            selectedBlockType,
+
+          label,
+          grades: [...grades],
+          subject,
+
+          /*
+            Later, individual lesson dates can
+            be recorded here as they become planned.
+          */
+          plannedDates: []
+        };
+
+        workingScheduleBlocks.push(
+          block
+        );
+      }
+    );
 
     sortScheduleBlocks(
       workingScheduleBlocks

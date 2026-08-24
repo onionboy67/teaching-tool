@@ -384,7 +384,7 @@ h3 {
 
 .weekly-schedule {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(7, minmax(150px, 1fr));
   gap: 12px;
   overflow-x: auto;
 }
@@ -400,6 +400,11 @@ h3 {
 .weekday-column h4 {
   margin-bottom: 13px;
   text-align: center;
+}
+
+.weekend-column {
+  background: #f3f3f5;
+  opacity: 0.78;
 }
 
 .weekday-blocks {
@@ -623,8 +628,148 @@ fieldset.form-field {
   }
 }
 
+/* ---------------------------------------------------------
+   UNPLANNED BLOCK ALERT
+---------------------------------------------------------- */
+
+.unplanned-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border: 1px solid #f0b5b5;
+  border-radius: 16px;
+  background: #fff1f1;
+}
+
+.unplanned-flag {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #e5484d;
+  color: white;
+  font-weight: 800;
+}
+
+.unplanned-alert strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.unplanned-alert p {
+  margin: 0;
+  color: #7d4a4a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* ---------------------------------------------------------
+   REPEATING DAY SELECTOR
+---------------------------------------------------------- */
+
+.day-selector-field {
+  grid-column: 1 / -1;
+}
+
+.day-checkbox-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(58px, 1fr));
+  gap: 8px;
+}
+
+.day-checkbox {
+  position: relative;
+}
+
+.day-checkbox input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.day-checkbox span {
+  display: block;
+  padding: 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fafafa;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.day-checkbox input:checked + span {
+  background: #1d1d1f;
+  color: white;
+  border-color: #1d1d1f;
+}
+
+.day-checkbox span:hover {
+  transform: translateY(-1px);
+}
+
+.day-checkbox.weekend-day span {
+  color: #99999f;
+  background: #f2f2f4;
+}
+
+.day-checkbox.weekend-day input:checked + span {
+  color: white;
+  background: #66666b;
+  border-color: #66666b;
+}
+
+/* ---------------------------------------------------------
+   CALENDAR UNPLANNED INDICATORS
+---------------------------------------------------------- */
+
+.day {
+  position: relative;
+}
+
+.day.has-unplanned {
+  background: #fff0f0;
+  color: #b4232a;
+  font-weight: 700;
+}
+
+.day.has-unplanned.today {
+  background: #1d1d1f;
+  color: white;
+}
+
+.unplanned-count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #e5484d;
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 @media (max-width: 520px) {
-  .page-shell {
+  
+      .day-checkbox-row {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  
+    .page-shell {
     padding-top: 28px;
   }
 

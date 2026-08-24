@@ -82,7 +82,21 @@
           </button>
         </div>
 
+<div id="unplannedAlert" class="unplanned-alert hidden" role="status">
 
+  <div class="unplanned-flag">!</div>
+
+  <div>
+    <strong id="unplannedAlertText">
+      Unplanned instructional blocks need attention
+    </strong>
+
+    <p>
+      These teaching blocks are scheduled, but no lesson has been planned yet.
+    </p>
+  </div>
+
+</div>
         <!-- CALENDAR PREVIEW -->
 
         <section
@@ -399,7 +413,10 @@
 
 
         <div id="scheduleBuilder" class="weekly-schedule">
-
+          <div class="weekday-column weekend-column">
+          <h4>Sunday</h4>
+          <div id="SundayBlocks" class="weekday-blocks"></div>
+          </div>
           <div class="weekday-column">
             <h4>Monday</h4>
             <div id="MondayBlocks" class="weekday-blocks"></div>
@@ -424,7 +441,10 @@
             <h4>Friday</h4>
             <div id="FridayBlocks" class="weekday-blocks"></div>
           </div>
-
+          <div class="weekday-column weekend-column">
+            <h4>Saturday</h4>
+           <div id="SaturdayBlocks" class="weekday-blocks"></div>
+          </div>
         </div>
 
       </section>
@@ -484,28 +504,59 @@
 
       <div class="form-grid">
 
-        <label class="form-field">
-          <span>Day</span>
+        <div class="form-field day-selector-field">
+  <span>Repeat on</span>
 
-          <select id="blockDay" required>
-            <option value="Monday">Monday</option>
-            <option value="Tuesday">Tuesday</option>
-            <option value="Wednesday">Wednesday</option>
-            <option value="Thursday">Thursday</option>
-            <option value="Friday">Friday</option>
-          </select>
-        </label>
+  <div id="blockDayChoices" class="day-checkbox-row">
+
+    <label class="day-checkbox weekend-day">
+      <input type="checkbox" value="Sunday" />
+      <span>Sun</span>
+    </label>
+
+    <label class="day-checkbox">
+      <input type="checkbox" value="Monday" checked />
+      <span>Mon</span>
+    </label>
+
+    <label class="day-checkbox">
+      <input type="checkbox" value="Tuesday" />
+      <span>Tue</span>
+    </label>
+
+    <label class="day-checkbox">
+      <input type="checkbox" value="Wednesday" />
+      <span>Wed</span>
+    </label>
+
+    <label class="day-checkbox">
+      <input type="checkbox" value="Thursday" />
+      <span>Thu</span>
+    </label>
+
+    <label class="day-checkbox">
+      <input type="checkbox" value="Friday" />
+      <span>Fri</span>
+    </label>
+
+    <label class="day-checkbox weekend-day">
+      <input type="checkbox" value="Saturday" />
+      <span>Sat</span>
+    </label>
+
+  </div>
+</div>
 
 
         <label class="form-field">
           <span>Start Time</span>
-          <input id="blockStartTime" type="time" required />
+          <input id="blockStartTime" type="time" value="08:00" required />
         </label>
 
 
         <label class="form-field">
           <span>End Time</span>
-          <input id="blockEndTime" type="time" required />
+          <input id="blockEndTime" type="time" value="09:00" required />
         </label>
 
 
