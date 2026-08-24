@@ -3,9 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <title>Teacher HQ</title>
-
   <link rel="stylesheet" href="styles.css" />
 </head>
 
@@ -19,17 +17,28 @@
     <section class="user-selection-shell">
 
       <div class="welcome-heading">
-        <p class="eyebrow">Teaching Tool</p>
         <h1>Who's heading to HQ?</h1>
-        <p>Select your profile or create a new one.</p>
+        <p>Select your profile, restore a backup, or create a new one.</p>
       </div>
 
       <div id="profileList" class="profile-grid"></div>
 
-      <button id="createUserButton" class="primary-button">
-        + Create User
-      </button>
+      <div class="stacked-actions">
+        <button id="createUserButton" class="primary-button edit-only">
+          + Create User
+        </button>
 
+        <button id="restoreBackupButton" class="secondary-button">
+          Restore Backup
+        </button>
+      </div>
+
+      <input
+        id="restoreBackupInput"
+        class="hidden"
+        type="file"
+        accept=".html,.json,text/html,application/json"
+      />
     </section>
   </main>
 
@@ -39,14 +48,14 @@
   ========================================================== -->
 
   <main id="teacherHQView" class="view hidden">
-
     <div class="page-shell">
 
       <header class="top-bar">
-
         <div>
-          <p class="eyebrow">Teaching Tool</p>
           <h1>Teacher HQ</h1>
+          <div id="readOnlyBanner" class="read-only-badge hidden">
+            Read View
+          </div>
         </div>
 
         <div class="current-user-area">
@@ -59,7 +68,6 @@
             </button>
           </div>
         </div>
-
       </header>
 
 
@@ -72,31 +80,48 @@
         <div class="section-heading-row">
           <div>
             <h2>Overview</h2>
-            <p id="activeSchoolYearLabel" class="section-subtitle">
-              No school year created yet.
+            <p id="activeTermsLabel" class="section-subtitle">
+              No school terms yet.
             </p>
           </div>
 
-          <button id="startSchoolYearButton" class="secondary-button">
-            + Start New School Year
+          <button id="addTermButton" class="secondary-button edit-only">
+            + Add School Term
           </button>
         </div>
 
-<div id="unplannedAlert" class="unplanned-alert hidden" role="status">
+        <div id="backupReminder" class="notice notice-backup hidden" role="status">
+          <div class="notice-icon">↓</div>
+          <div>
+            <strong>Today's backup has not been downloaded yet.</strong>
+            <p>Your browser stores your working data locally. Downloading a daily backup gives you a portable recovery file.</p>
+          </div>
+          <button id="backupReminderButton" class="secondary-button">
+            Download Backup
+          </button>
+        </div>
 
-  <div class="unplanned-flag">!</div>
+        <div id="unplannedAlert" class="notice notice-danger hidden" role="status">
+          <div class="notice-icon">!</div>
+          <div>
+            <strong id="unplannedAlertText">
+              Unplanned instructional blocks need attention
+            </strong>
+            <p>Only Instructional Time blocks are included in this planning alert.</p>
+          </div>
+        </div>
 
-  <div>
-    <strong id="unplannedAlertText">
-      Unplanned instructional blocks need attention
-    </strong>
+        <div id="conflictAlert" class="notice notice-warning hidden" role="status">
+          <div class="notice-icon">!</div>
+          <div>
+            <strong id="conflictAlertText">
+              Schedule conflicts need review
+            </strong>
+            <p>Overlapping blocks are allowed, but are flagged so you can confirm that the overlap is intentional.</p>
+          </div>
+        </div>
 
-    <p>
-      These teaching blocks are scheduled, but no lesson has been planned yet.
-    </p>
-  </div>
 
-</div>
         <!-- CALENDAR PREVIEW -->
 
         <section
@@ -104,16 +129,13 @@
           class="calendar-card"
           aria-label="Open full calendar"
         >
-
           <div class="calendar-header">
-
             <div>
               <p class="small-label">Calendar</p>
               <h3 id="monthTitle"></h3>
             </div>
 
             <div class="calendar-controls">
-
               <button
                 id="previousMonth"
                 class="icon-button"
@@ -129,74 +151,103 @@
               >
                 →
               </button>
-
             </div>
-
           </div>
 
           <div id="calendarGrid" class="calendar-grid"></div>
 
-          <div class="calendar-footer">
-            Click to open full calendar
+          <div class="calendar-legend">
+            <span><i class="legend-dot legend-red"></i> Unplanned instructional</span>
+            <span><i class="legend-dot legend-green"></i> Planned instructional</span>
+            <span><i class="legend-dot legend-yellow"></i> Schedule conflict</span>
+            <span><i class="legend-dot legend-grey"></i> Past</span>
           </div>
 
+          <div class="calendar-footer">
+            Click the calendar background to open the full calendar
+          </div>
         </section>
 
 
-        <!-- SCHOOL YEAR SUMMARY -->
+        <!-- TERMS SUMMARY -->
 
-        <div id="schoolYearSummary" class="school-year-summary hidden">
-
-          <div class="summary-card">
-            <span class="summary-label">School Year</span>
-            <strong id="summarySchoolYearName"></strong>
-          </div>
-
-          <div class="summary-card">
-            <span class="summary-label">Starts</span>
-            <strong id="summaryStartDate"></strong>
-          </div>
-
-          <div class="summary-card">
-            <span class="summary-label">Ends</span>
-            <strong id="summaryEndDate"></strong>
-          </div>
-
-          <div class="summary-card">
-            <span class="summary-label">Weekly Blocks</span>
-            <strong id="summaryBlockCount">0</strong>
-          </div>
-
-        </div>
+        <div id="termSummaryList" class="term-summary-list"></div>
 
       </section>
 
 
       <!-- =====================================================
-           WEEKLY SCHEDULE PREVIEW
+           WEEKLY INSTRUCTIONAL BLOCKS
       ====================================================== -->
 
       <section id="weeklyScheduleSection" class="section hidden">
-
         <div class="section-heading-row">
           <div>
-            <h2>Standard Weekly Schedule</h2>
+            <h2>Weekly Blocks</h2>
             <p class="section-subtitle">
-              Your normal Monday–Friday timetable.
+              Instructional Time blocks only. Other schedule blocks remain available inside each School Term.
             </p>
           </div>
+        </div>
 
-          <button id="editScheduleButton" class="secondary-button">
-            Edit Schedule
+        <div id="weeklyScheduleDisplay"></div>
+      </section>
+
+
+      <!-- =====================================================
+           SCHOOL TERMS
+      ====================================================== -->
+
+      <section id="termsSection" class="section hidden">
+        <div class="section-heading-row">
+          <div>
+            <h2>School Terms</h2>
+            <p class="section-subtitle">
+              Terms may overlap. Editing a schedule after a term has begun creates a new schedule version so previous dates stay intact.
+            </p>
+          </div>
+        </div>
+
+        <div id="termsList" class="terms-list"></div>
+      </section>
+
+
+      <!-- =====================================================
+           BACKUP & SHARE
+      ====================================================== -->
+
+      <section class="section">
+        <div class="section-heading-row">
+          <div>
+            <h2>Backup &amp; Share</h2>
+            <p class="section-subtitle">
+              Backups are portable and restorable. Read View files can be opened in any browser and cannot edit your working data.
+            </p>
+          </div>
+        </div>
+
+        <div class="backup-actions">
+          <button id="downloadBackupButton" class="primary-button">
+            Download Daily Backup
+          </button>
+
+          <button id="downloadReadViewButton" class="secondary-button">
+            Download Read View
+          </button>
+
+          <button id="previewReadViewButton" class="secondary-button">
+            Preview Read View
+          </button>
+
+          <button id="restoreBackupHQButton" class="secondary-button edit-only">
+            Restore Backup
           </button>
         </div>
 
-        <div id="weeklyScheduleDisplay" class="weekly-schedule"></div>
-
+        <p id="backupStatusText" class="section-subtitle backup-status"></p>
       </section>
 
     </div>
-
   </main>
 
 
@@ -205,12 +256,9 @@
   ========================================================== -->
 
   <dialog id="createUserDialog" class="modal">
-
     <form id="createUserForm" class="modal-content">
-
       <div class="modal-heading">
         <div>
-          <p class="eyebrow">New Profile</p>
           <h2>Create User</h2>
         </div>
 
@@ -224,10 +272,8 @@
         </button>
       </div>
 
-
       <label class="form-field">
         <span>Username</span>
-
         <input
           id="newUsername"
           type="text"
@@ -237,167 +283,99 @@
         />
       </label>
 
-
       <fieldset class="form-field">
-
         <legend>Profile Colour</legend>
 
         <div id="profileColourChoices" class="colour-options">
-
-          <button
-            type="button"
-            class="colour-choice"
-            data-colour="#ff5f8f"
-            style="--profile-colour:#ff5f8f"
-            aria-label="Pink"
-          ></button>
-
-          <button
-            type="button"
-            class="colour-choice"
-            data-colour="#8c6cff"
-            style="--profile-colour:#8c6cff"
-            aria-label="Purple"
-          ></button>
-
-          <button
-            type="button"
-            class="colour-choice"
-            data-colour="#33c7ff"
-            style="--profile-colour:#33c7ff"
-            aria-label="Blue"
-          ></button>
-
-          <button
-            type="button"
-            class="colour-choice"
-            data-colour="#39d98a"
-            style="--profile-colour:#39d98a"
-            aria-label="Green"
-          ></button>
-
-          <button
-            type="button"
-            class="colour-choice"
-            data-colour="#b7f23a"
-            style="--profile-colour:#b7f23a"
-            aria-label="Lime"
-          ></button>
-
-          <button
-            type="button"
-            class="colour-choice"
-            data-colour="#ffb347"
-            style="--profile-colour:#ffb347"
-            aria-label="Orange"
-          ></button>
-
+          <button type="button" class="colour-choice" data-colour="#ff5f8f" style="--profile-colour:#ff5f8f" aria-label="Pink"></button>
+          <button type="button" class="colour-choice" data-colour="#8c6cff" style="--profile-colour:#8c6cff" aria-label="Purple"></button>
+          <button type="button" class="colour-choice" data-colour="#33c7ff" style="--profile-colour:#33c7ff" aria-label="Blue"></button>
+          <button type="button" class="colour-choice" data-colour="#39d98a" style="--profile-colour:#39d98a" aria-label="Green"></button>
+          <button type="button" class="colour-choice" data-colour="#b7f23a" style="--profile-colour:#b7f23a" aria-label="Lime"></button>
+          <button type="button" class="colour-choice" data-colour="#ffb347" style="--profile-colour:#ffb347" aria-label="Orange"></button>
         </div>
-
       </fieldset>
-
 
       <label class="form-field">
         <span>Profile Picture <small>(optional)</small></span>
-
-        <input
-          id="profileImageInput"
-          type="file"
-          accept="image/*"
-        />
+        <input id="profileImageInput" type="file" accept="image/*" />
       </label>
 
-
       <div class="modal-actions">
-        <button
-          type="button"
-          id="cancelCreateUserButton"
-          class="secondary-button"
-        >
+        <button type="button" id="cancelCreateUserButton" class="secondary-button">
           Cancel
         </button>
-
         <button type="submit" class="primary-button">
           Create User
         </button>
       </div>
-
     </form>
-
   </dialog>
 
 
   <!-- =========================================================
-       SCHOOL YEAR SETUP
+       SCHOOL TERM SETUP
   ========================================================== -->
 
-  <dialog id="schoolYearDialog" class="modal large-modal">
-
+  <dialog id="termDialog" class="modal large-modal">
     <div class="modal-content">
 
       <div class="modal-heading">
-
         <div>
-          <p class="eyebrow">Setup</p>
-          <h2>Start New School Year</h2>
+          <h2 id="termDialogHeading">Add School Term</h2>
+          <p id="termDialogSubtitle" class="section-subtitle">
+            Add a date range and its standard weekly schedule.
+          </p>
         </div>
 
         <button
-          id="closeSchoolYearButton"
+          id="closeTermButton"
           type="button"
           class="close-button"
           aria-label="Close"
         >
           ×
         </button>
-
       </div>
 
-
       <section class="setup-section">
-
-        <h3>School Year</h3>
+        <h3>Term Details</h3>
 
         <div class="form-grid">
-
           <label class="form-field">
-            <span>School Year Name</span>
-
-            <input
-              id="schoolYearName"
-              type="text"
-              placeholder="2026/2027"
-            />
+            <span>Term Name</span>
+            <input id="termName" type="text" placeholder="2026/2027 — Fall Schedule" />
           </label>
-
 
           <label class="form-field">
             <span>Start Date</span>
-            <input id="schoolYearStart" type="date" />
+            <input id="termStart" type="date" />
           </label>
-
 
           <label class="form-field">
             <span>End Date</span>
-            <input id="schoolYearEnd" type="date" />
+            <input id="termEnd" type="date" />
           </label>
-
         </div>
 
+        <label id="effectiveDateField" class="form-field hidden">
+          <span>Schedule changes effective</span>
+          <input id="scheduleEffectiveDate" type="date" />
+          <small>
+            Changes before this date stay exactly as they were. The new weekly schedule applies from this date forward.
+          </small>
+        </label>
       </section>
 
 
       <!-- WEEKLY SCHEDULE BUILDER -->
 
       <section class="setup-section">
-
         <div class="section-heading-row">
-
           <div>
             <h3>Standard Weekly Schedule</h3>
-
             <p class="section-subtitle">
-              Add the timetable your school normally follows each week.
+              Add instructional, admin, planning, recess, lunch, supervision, or other blocks. Overlaps are allowed and will be flagged.
             </p>
           </div>
 
@@ -408,15 +386,14 @@
           >
             + Add Block
           </button>
-
         </div>
-
 
         <div id="scheduleBuilder" class="weekly-schedule">
           <div class="weekday-column weekend-column">
-          <h4>Sunday</h4>
-          <div id="SundayBlocks" class="weekday-blocks"></div>
+            <h4>Sunday</h4>
+            <div id="SundayBlocks" class="weekday-blocks"></div>
           </div>
+
           <div class="weekday-column">
             <h4>Monday</h4>
             <div id="MondayBlocks" class="weekday-blocks"></div>
@@ -441,37 +418,24 @@
             <h4>Friday</h4>
             <div id="FridayBlocks" class="weekday-blocks"></div>
           </div>
+
           <div class="weekday-column weekend-column">
             <h4>Saturday</h4>
-           <div id="SaturdayBlocks" class="weekday-blocks"></div>
+            <div id="SaturdayBlocks" class="weekday-blocks"></div>
           </div>
         </div>
-
       </section>
 
-
       <div class="modal-actions">
-
-        <button
-          id="cancelSchoolYearButton"
-          type="button"
-          class="secondary-button"
-        >
+        <button id="cancelTermButton" type="button" class="secondary-button">
           Cancel
         </button>
 
-        <button
-          id="saveSchoolYearButton"
-          type="button"
-          class="primary-button"
-        >
-          Save School Year
+        <button id="saveTermButton" type="button" class="primary-button">
+          Save Term
         </button>
-
       </div>
-
     </div>
-
   </dialog>
 
 
@@ -480,13 +444,10 @@
   ========================================================== -->
 
   <dialog id="scheduleBlockDialog" class="modal">
-
     <form id="scheduleBlockForm" class="modal-content">
 
       <div class="modal-heading">
-
         <div>
-          <p class="eyebrow">Weekly Schedule</p>
           <h2 id="scheduleBlockHeading">Add Block</h2>
         </div>
 
@@ -498,71 +459,62 @@
         >
           ×
         </button>
-
       </div>
 
+      <div class="form-field day-selector-field">
+        <span>Repeat on</span>
+
+        <div id="blockDayChoices" class="day-checkbox-row">
+          <label class="day-checkbox weekend-day">
+            <input type="checkbox" value="Sunday" />
+            <span>Sun</span>
+          </label>
+
+          <label class="day-checkbox">
+            <input type="checkbox" value="Monday" checked />
+            <span>Mon</span>
+          </label>
+
+          <label class="day-checkbox">
+            <input type="checkbox" value="Tuesday" />
+            <span>Tue</span>
+          </label>
+
+          <label class="day-checkbox">
+            <input type="checkbox" value="Wednesday" />
+            <span>Wed</span>
+          </label>
+
+          <label class="day-checkbox">
+            <input type="checkbox" value="Thursday" />
+            <span>Thu</span>
+          </label>
+
+          <label class="day-checkbox">
+            <input type="checkbox" value="Friday" />
+            <span>Fri</span>
+          </label>
+
+          <label class="day-checkbox weekend-day">
+            <input type="checkbox" value="Saturday" />
+            <span>Sat</span>
+          </label>
+        </div>
+      </div>
 
       <div class="form-grid">
-
-        <div class="form-field day-selector-field">
-  <span>Repeat on</span>
-
-  <div id="blockDayChoices" class="day-checkbox-row">
-
-    <label class="day-checkbox weekend-day">
-      <input type="checkbox" value="Sunday" />
-      <span>Sun</span>
-    </label>
-
-    <label class="day-checkbox">
-      <input type="checkbox" value="Monday" checked />
-      <span>Mon</span>
-    </label>
-
-    <label class="day-checkbox">
-      <input type="checkbox" value="Tuesday" />
-      <span>Tue</span>
-    </label>
-
-    <label class="day-checkbox">
-      <input type="checkbox" value="Wednesday" />
-      <span>Wed</span>
-    </label>
-
-    <label class="day-checkbox">
-      <input type="checkbox" value="Thursday" />
-      <span>Thu</span>
-    </label>
-
-    <label class="day-checkbox">
-      <input type="checkbox" value="Friday" />
-      <span>Fri</span>
-    </label>
-
-    <label class="day-checkbox weekend-day">
-      <input type="checkbox" value="Saturday" />
-      <span>Sat</span>
-    </label>
-
-  </div>
-</div>
-
-
         <label class="form-field">
           <span>Start Time</span>
           <input id="blockStartTime" type="time" value="08:00" required />
         </label>
-
 
         <label class="form-field">
           <span>End Time</span>
           <input id="blockEndTime" type="time" value="09:00" required />
         </label>
 
-
         <label class="form-field">
           <span>Block Type</span>
-
           <select id="blockType" required>
             <option value="Instructional Time">Instructional Time</option>
             <option value="Admin">Admin</option>
@@ -573,13 +525,10 @@
             <option value="Other">Other</option>
           </select>
         </label>
-
       </div>
-
 
       <label class="form-field">
         <span>Optional Label</span>
-
         <input
           id="blockLabel"
           type="text"
@@ -587,155 +536,83 @@
         />
       </label>
 
-
-      <!-- INSTRUCTIONAL OPTIONS -->
-
       <section id="instructionalOptions">
-
-        <div class="form-grid">
-
+        <div class="form-grid two-column-grid">
           <label class="form-field">
             <span>Grade</span>
-
             <select id="blockGrade">
               <option value="">Select grade</option>
-              <option value="Kindergarten">Kindergarten</option>
-              <option value="Grade 1">Grade 1</option>
-              <option value="Grade 2">Grade 2</option>
-              <option value="Grade 3">Grade 3</option>
-              <option value="Grade 4">Grade 4</option>
-              <option value="Grade 5">Grade 5</option>
-              <option value="Grade 6">Grade 6</option>
-              <option value="Grade 7">Grade 7</option>
-              <option value="Grade 8">Grade 8</option>
             </select>
           </label>
-
 
           <label class="form-field">
             <span>Subject</span>
-
             <select id="blockSubject">
               <option value="">Select subject</option>
-              <option value="ELA">ELA</option>
-              <option value="Math">Math</option>
-              <option value="Second Step">Second Step</option>
-              <option value="Fine Arts">Fine Arts</option>
             </select>
           </label>
-
         </div>
-
 
         <label class="checkbox-row">
           <input id="splitClassCheckbox" type="checkbox" />
           <span>This is a split class</span>
         </label>
 
-
         <div id="splitGradeArea" class="hidden">
-
-          <p class="field-heading">
-            Select the grades in this split class
-          </p>
-
-          <div id="splitGradeChoices" class="split-grade-options">
-
-            <label>
-              <input type="checkbox" value="Kindergarten" />
-              Kindergarten
-            </label>
-
-            <label>
-              <input type="checkbox" value="Grade 1" />
-              Grade 1
-            </label>
-
-            <label>
-              <input type="checkbox" value="Grade 2" />
-              Grade 2
-            </label>
-
-            <label>
-              <input type="checkbox" value="Grade 3" />
-              Grade 3
-            </label>
-
-            <label>
-              <input type="checkbox" value="Grade 4" />
-              Grade 4
-            </label>
-
-            <label>
-              <input type="checkbox" value="Grade 5" />
-              Grade 5
-            </label>
-
-            <label>
-              <input type="checkbox" value="Grade 6" />
-              Grade 6
-            </label>
-
-            <label>
-              <input type="checkbox" value="Grade 7" />
-              Grade 7
-            </label>
-
-            <label>
-              <input type="checkbox" value="Grade 8" />
-              Grade 8
-            </label>
-
-          </div>
-
+          <p class="field-heading">Select the grades in this split class</p>
+          <div id="splitGradeChoices" class="split-grade-options"></div>
         </div>
 
-
         <div class="custom-entry-row">
-
-          <button
-            id="addCustomGradeButton"
-            type="button"
-            class="text-button"
-          >
+          <button id="addCustomGradeButton" type="button" class="text-button">
             + Add Grade
           </button>
 
-          <button
-            id="addCustomSubjectButton"
-            type="button"
-            class="text-button"
-          >
+          <button id="addCustomSubjectButton" type="button" class="text-button">
             + Add Subject
           </button>
-
         </div>
-
       </section>
 
-
       <div class="modal-actions">
-
-        <button
-          id="cancelScheduleBlockButton"
-          type="button"
-          class="secondary-button"
-        >
+        <button id="cancelScheduleBlockButton" type="button" class="secondary-button">
           Cancel
         </button>
-
         <button type="submit" class="primary-button">
           Save Block
         </button>
+      </div>
+    </form>
+  </dialog>
 
+
+  <!-- =========================================================
+       DAY DETAILS
+  ========================================================== -->
+
+  <dialog id="dayDetailsDialog" class="modal">
+    <div class="modal-content">
+      <div class="modal-heading">
+        <div>
+          <h2 id="dayDetailsHeading">Day Details</h2>
+          <p class="section-subtitle">Scheduled blocks for this date.</p>
+        </div>
+
+        <button
+          id="closeDayDetailsButton"
+          type="button"
+          class="close-button"
+          aria-label="Close"
+        >
+          ×
+        </button>
       </div>
 
-    </form>
-
+      <div id="dayDetailsList" class="day-details-list"></div>
+    </div>
   </dialog>
 
 
   <script src="app.js"></script>
-
 </body>
 </html>
