@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Teacher HQ</title>
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="lesson-planner.css?v=1" />
 </head>
 <body>
 
@@ -549,13 +550,14 @@
     <div class="modal-content">
       <div class="modal-heading"><div><h2 id="lessonPlaceholderHeading">Lesson</h2><p id="lessonPlaceholderMeta" class="section-subtitle"></p></div><button id="closeLessonPlaceholderButton" type="button" class="close-button" aria-label="Close">×</button></div>
       <div id="lessonPlaceholderDetails" class="lesson-placeholder-details"></div>
-      <div class="notice notice-backup"><div class="notice-icon">→</div><div><strong>Lesson Planner connection is ready.</strong><p>This placeholder has a stable ID, date, time, class, subject, and unit. The lesson-plan wizard will attach to this exact record in the next phase.</p></div></div>
-      <div class="modal-actions"><button id="startLessonPlannerButton" type="button" class="primary-button">Start Lesson Plan</button></div>
+      <div class="notice notice-backup"><div class="notice-icon">→</div><div><strong>Lesson Planner is ready.</strong><p>This lesson record opens the living Lesson Planner and keeps its date, time, class, subject and unit attached.</p></div></div>
+      <div class="modal-actions"><button id="startLessonPlannerButton" type="button" class="primary-button">Open Lesson Planner</button></div>
     </div>
   </dialog>
 
   <script src="curriculum-data.js?v=2"></script>
   <script src="bloom-data.js?v=2"></script>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
+  <script src="lesson-planner.js?v=1"></script>
 </body>
 </html>

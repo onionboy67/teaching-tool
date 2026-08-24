@@ -4,8 +4,8 @@
    Unit Planner + assessments/rubrics + lesson placeholders + portable backup/read view
 ============================================================ */
 
-const STORAGE_KEY = "teacherHQData_v7";
-const LEGACY_STORAGE_KEYS = ["teacherHQData_v6", "teacherHQData_v5", "teacherHQData_v4", "teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
+const STORAGE_KEY = "teacherHQData_v8";
+const LEGACY_STORAGE_KEYS = ["teacherHQData_v7", "teacherHQData_v6", "teacherHQData_v5", "teacherHQData_v4", "teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
 
 const DEFAULT_GRADES = [
   "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
@@ -139,7 +139,7 @@ const lessonPlaceholderDialog = $("lessonPlaceholderDialog");
 ============================================================ */
 
 function defaultData() {
-  return { schemaVersion: 7, activeUserId: null, users: [] };
+  return { schemaVersion: 8, activeUserId: null, users: [] };
 }
 
 function loadData() {
@@ -162,7 +162,7 @@ function loadData() {
 
 function normalizeData(data) {
   const normalized = data && typeof data === "object" ? data : defaultData();
-  normalized.schemaVersion = 7;
+  normalized.schemaVersion = 8;
   if (!Array.isArray(normalized.users)) normalized.users = [];
   if (!("activeUserId" in normalized)) normalized.activeUserId = null;
   normalized.users = normalized.users.map(normalizeUser);
@@ -1929,6 +1929,7 @@ function renderCalendar() {
     const dateKey = getLocalDateKey(date);
     const cell = document.createElement("div");
     cell.className = "day";
+    cell.dataset.dateKey = dateKey;
     if (date.getDay() === 0 || date.getDay() === 6) cell.classList.add("weekend");
     if (dateKey < todayKey) cell.classList.add("past");
     if (dateKey === todayKey) cell.classList.add("today");
@@ -4001,6 +4002,7 @@ function renderUnitWorkspaceCalendar() {
 
     const cell = document.createElement("div");
     cell.className = "day unit-workspace-calendar-day";
+    cell.dataset.dateKey = dateKey;
 
     if (date.getDay() === 0 || date.getDay() === 6) {
       cell.classList.add("weekend");
@@ -6638,7 +6640,7 @@ function buildReadableExportHTML(user, { title, includeRestoreData, includeReadO
     ? `<script id="teacherHQBackupData" type="application/json">${safeJSONForScript(fullAppData)}</script>`
     : "";
   const embeddedReadOnly = includeReadOnlyData
-    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 7, user })}</script>`
+    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 8, user })}</script>`
     : "";
 
   return `<!DOCTYPE html>
