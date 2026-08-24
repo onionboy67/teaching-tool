@@ -4,8 +4,8 @@
    Unit Planner + lesson placeholders + portable backup/read view
 ============================================================ */
 
-const STORAGE_KEY = "teacherHQData_v4";
-const LEGACY_STORAGE_KEYS = ["teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
+const STORAGE_KEY = "teacherHQData_v5";
+const LEGACY_STORAGE_KEYS = ["teacherHQData_v4", "teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
 
 const DEFAULT_GRADES = [
   "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
@@ -22,6 +22,20 @@ const FUN_UNIT_COLOURS = [
 const CURRICULUM = Array.isArray(window.TEACHER_HQ_CURRICULUM)
   ? window.TEACHER_HQ_CURRICULUM
   : [];
+
+const BLOOM_REFERENCE = window.TEACHER_HQ_BLOOM && typeof window.TEACHER_HQ_BLOOM === "object"
+  ? window.TEACHER_HQ_BLOOM
+  : { levels: {}, preferred: {} };
+
+const BLOOM_LEVELS = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"];
+const BLOOM_BANDS = {
+  Remember: "green",
+  Understand: "green",
+  Apply: "blue",
+  Analyze: "blue",
+  Evaluate: "black",
+  Create: "black"
+};
 
 let appData = loadData();
 let activeUserId = appData.activeUserId || null;
@@ -46,6 +60,10 @@ let unitDraft = null;
 let unitCurriculumSelection = new Set();
 let unitVisibleDate = null;
 let selectedLessonContext = null;
+
+let activeUnitWorkspaceId = null;
+let activeUnitWorkspaceSection = null;
+let unitWorkspaceVisibleDate = null;
 
 /* ============================================================
    DOM REFERENCES
@@ -113,7 +131,7 @@ const lessonPlaceholderDialog = $("lessonPlaceholderDialog");
 ============================================================ */
 
 function defaultData() {
-  return { schemaVersion: 4, activeUserId: null, users: [] };
+  return { schemaVersion: 5, activeUserId: null, users: [] };
 }
 
 function loadData() {
@@ -136,7 +154,7 @@ function loadData() {
 
 function normalizeData(data) {
   const normalized = data && typeof data === "object" ? data : defaultData();
-  normalized.schemaVersion = 4;
+  normalized.schemaVersion = 5;
   if (!Array.isArray(normalized.users)) normalized.users = [];
   if (!("activeUserId" in normalized)) normalized.activeUserId = null;
   normalized.users = normalized.users.map(normalizeUser);
@@ -158,6 +176,9 @@ function normalizeUser(user) {
       ? user.calendarExceptions.map(normalizeException)
       : [],
     savedHolidayNames: Array.isArray(user.savedHolidayNames) ? user.savedHolidayNames.filter(Boolean) : [],
+    bloomOverrides: user.bloomOverrides && typeof user.bloomOverrides === "object"
+      ? { ...user.bloomOverrides }
+      : {},
     units: Array.isArray(user.units) ? user.units.map(normalizeUnit) : []
   };
 
@@ -279,6 +300,30 @@ function normalizeUnit(unit) {
     grades: Array.isArray(unit.grades) ? unit.grades : [],
     subject: unit.subject || ""
   };
+
+  const legacyWorking = Array.isArray(unit.selectedCurriculum)
+    ? unit.selectedCurriculum.map(record => structuredCloneSafe(record))
+    : [];
+
+  const sourceLinks = unit.curriculumLinks && typeof unit.curriculumLinks === "object"
+    ? unit.curriculumLinks
+    : {};
+
+  const curriculumLinks = {
+    working: Array.isArray(sourceLinks.working)
+      ? sourceLinks.working.map(record => structuredCloneSafe(record))
+      : legacyWorking,
+    prerequisite: Array.isArray(sourceLinks.prerequisite)
+      ? sourceLinks.prerequisite.map(record => structuredCloneSafe(record))
+      : [],
+    lookingAhead: Array.isArray(sourceLinks.lookingAhead)
+      ? sourceLinks.lookingAhead.map(record => structuredCloneSafe(record))
+      : [],
+    crossCurricular: Array.isArray(sourceLinks.crossCurricular)
+      ? sourceLinks.crossCurricular.map(record => structuredCloneSafe(record))
+      : []
+  };
+
   return {
     id: unit.id || makeId("unit"),
     name: unit.name || "Untitled Unit",
@@ -287,13 +332,17 @@ function normalizeUnit(unit) {
       subject: classSpec.subject || ""
     },
     colour: normalizeHexColour(unit.colour) || "",
-    selectedCurriculum: Array.isArray(unit.selectedCurriculum) ? unit.selectedCurriculum : [],
+    selectedCurriculum: curriculumLinks.working.map(record => structuredCloneSafe(record)),
+    curriculumLinks,
     targetMinutes: Number(unit.targetMinutes) || 0,
     allocationMethod: unit.allocationMethod || "hours",
     allocationPercentage: Number(unit.allocationPercentage) || null,
     availableMinutesAtCreation: Number(unit.availableMinutesAtCreation) || 0,
     startDate: unit.startDate || "",
     lessons: Array.isArray(unit.lessons) ? unit.lessons.map(normalizeLesson) : [],
+    workspace: unit.workspace && typeof unit.workspace === "object"
+      ? structuredCloneSafe(unit.workspace)
+      : {},
     createdAt: unit.createdAt || new Date().toISOString(),
     updatedAt: unit.updatedAt || new Date().toISOString(),
     needsScheduleReview: Boolean(unit.needsScheduleReview)
@@ -431,8 +480,13 @@ function durationMinutes(startTime, endTime) {
 }
 
 function hoursLabel(minutes) {
-  const hours = minutes / 60;
-  return Number.isInteger(hours) ? `${hours} h` : `${Number(hours.toFixed(2))} h`;
+  const totalMinutes = Math.max(0, Math.round(Number(minutes) || 0));
+  const hours = Math.floor(totalMinutes / 60);
+  const remainder = totalMinutes % 60;
+
+  if (hours && remainder) return `${hours} h ${remainder} min`;
+  if (hours) return `${hours} h`;
+  return `${remainder} min`;
 }
 
 function normalizeGradeArray(grades) {
@@ -1368,12 +1422,6 @@ $("dayOffStartDate").addEventListener("change", () => {
   }
   $("dayOffEndDate").min = $("dayOffStartDate").value;
 });
-$("searchPDLocationButton").addEventListener("click", () => {
-  const query = $("pdLocation").value.trim();
-  if (!query) return alert("Enter a location first, then Teacher HQ can search it in Google Maps.");
-  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank", "noopener,noreferrer");
-});
-
 dayOffForm.addEventListener("submit", event => {
   event.preventDefault();
   const user = getActiveUser();
@@ -2104,16 +2152,33 @@ $("unitWizardBackButton").addEventListener("click", () => {
 $("unitWizardNextButton").addEventListener("click", handleUnitWizardNext);
 $("useManualClassButton").addEventListener("click", useManualUnitClass);
 $("unitClassSelect").addEventListener("change", handleUnitClassSelect);
+
+$("selectAllCurriculumButton").addEventListener("click", () => {
+  getCurriculumForClass(unitDraft?.classSpec).forEach(record => unitCurriculumSelection.add(record.id));
+  syncCurriculumSelectionUI();
+});
+
 $("clearCurriculumSelectionButton").addEventListener("click", () => {
   unitCurriculumSelection.clear();
-  renderCurriculumBrowser();
+  syncCurriculumSelectionUI();
 });
-$("unitHoursInput").addEventListener("input", () => {
-  if ($("unitHoursInput").value) $("unitPercentageInput").value = "";
-  updateAllocationSummary();
+
+["unitHoursWholeInput", "unitMinutesSelect"].forEach(id => {
+  $(id).addEventListener("input", () => {
+    if (getTargetMinutesFromInputs() > 0) $("unitPercentageInput").value = "";
+    updateAllocationSummary();
+  });
+  $(id).addEventListener("change", () => {
+    if (getTargetMinutesFromInputs() > 0) $("unitPercentageInput").value = "";
+    updateAllocationSummary();
+  });
 });
+
 $("unitPercentageInput").addEventListener("input", () => {
-  if ($("unitPercentageInput").value) $("unitHoursInput").value = "";
+  if ($("unitPercentageInput").value) {
+    $("unitHoursWholeInput").value = "";
+    $("unitMinutesSelect").value = "0";
+  }
   updateAllocationSummary();
 });
 $("manualAvailableHoursInput").addEventListener("input", updateAllocationSummary);
@@ -2145,29 +2210,57 @@ $("nextUnitColourButton").addEventListener("click", () => {
   setUnitDraftColour(suggestedUnitColour(user, unitDraft.classSpec, editingUnitId, unitDraft.colour));
 });
 
-function openUnitWizard(unitId = null) {
+function openUnitWizard(unitId = null, startStep = 1) {
   const user = getActiveUser();
   if (!user || readOnlyMode) return;
   editingUnitId = unitId;
   const existing = unitId ? getUnitById(unitId, user) : null;
   unitDraft = existing ? structuredCloneSafe(existing) : normalizeUnit({
-    id: makeId("unit"), name: "", classSpec: { grades: [], subject: "" }, colour: "", selectedCurriculum: [],
-    targetMinutes: 0, allocationMethod: "hours", startDate: "", lessons: [],
-    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    id: makeId("unit"),
+    name: "",
+    classSpec: { grades: [], subject: "" },
+    colour: "",
+    selectedCurriculum: [],
+    curriculumLinks: { working: [], prerequisite: [], lookingAhead: [], crossCurricular: [] },
+    targetMinutes: 0,
+    allocationMethod: "hours",
+    startDate: "",
+    lessons: [],
+    workspace: {},
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   });
-  unitCurriculumSelection = new Set(unitDraft.selectedCurriculum.map(record => record.id));
+
+  unitCurriculumSelection = new Set(
+    (unitDraft.curriculumLinks?.working || unitDraft.selectedCurriculum || [])
+      .map(record => record.id)
+  );
+
   $("unitWizardHeading").textContent = existing ? "Edit Unit" : "Create Unit";
   $("unitNameInput").value = unitDraft.name === "Untitled Unit" ? "" : unitDraft.name;
   populateUnitClassSelect();
   selectExistingUnitClass();
   $("unitManualGrade").value = "";
   $("unitManualSubject").value = "";
-  $("unitHoursInput").value = unitDraft.allocationMethod === "hours" && unitDraft.targetMinutes ? formatHoursInput(unitDraft.targetMinutes) : "";
-  $("unitPercentageInput").value = unitDraft.allocationMethod === "percentage" && unitDraft.allocationPercentage ? unitDraft.allocationPercentage : "";
+
+  if (unitDraft.allocationMethod === "hours" && unitDraft.targetMinutes) {
+    setHourMinuteInputs(unitDraft.targetMinutes);
+  } else {
+    $("unitHoursWholeInput").value = "";
+    $("unitMinutesSelect").value = "0";
+  }
+
+  $("unitPercentageInput").value =
+    unitDraft.allocationMethod === "percentage" && unitDraft.allocationPercentage
+      ? unitDraft.allocationPercentage
+      : "";
+
   $("manualAvailableHoursInput").value = "";
   unitVisibleDate = defaultUnitMonth(user, unitDraft);
   syncUnitColourControls();
-  goToUnitStep(1);
+
+  const safeStep = Math.min(4, Math.max(1, Number(startStep) || 1));
+  goToUnitStep(safeStep);
   unitWizardDialog.showModal();
 }
 
@@ -2249,7 +2342,7 @@ function goToUnitStep(step) {
   });
   $("unitWizardStepLabel").textContent = `Step ${step} of 4`;
   $("unitWizardBackButton").classList.toggle("hidden", step === 1);
-  $("unitWizardNextButton").textContent = step === 4 ? "Save Unit" : "Continue";
+  $("unitWizardNextButton").textContent = step === 4 ? "Save Unit" : "Next";
   if (step === 2) renderCurriculumBrowser();
   if (step === 3) updateAllocationSummary();
   if (step === 4) {
@@ -2272,6 +2365,8 @@ function handleUnitWizardNext() {
   }
   if (unitWizardStep === 2) {
     unitDraft.selectedCurriculum = buildSelectedCurriculumSnapshots();
+    unitDraft.curriculumLinks ||= { working: [], prerequisite: [], lookingAhead: [], crossCurricular: [] };
+    unitDraft.curriculumLinks.working = structuredCloneSafe(unitDraft.selectedCurriculum);
     goToUnitStep(3);
     return;
   }
@@ -2283,29 +2378,55 @@ function handleUnitWizardNext() {
   saveUnitFromWizard();
 }
 
-function formatHoursInput(minutes) {
-  return Number((minutes / 60).toFixed(2));
+function setHourMinuteInputs(totalMinutes) {
+  const safeMinutes = Math.max(0, Number(totalMinutes) || 0);
+  const wholeHours = Math.floor(safeMinutes / 60);
+  const minuteRemainder = safeMinutes % 60;
+  const allowedMinutes = [0, 15, 30, 45];
+  const normalizedRemainder = allowedMinutes.includes(minuteRemainder)
+    ? minuteRemainder
+    : Math.ceil(minuteRemainder / 15) * 15;
+
+  $("unitHoursWholeInput").value = wholeHours;
+  $("unitMinutesSelect").value = String(normalizedRemainder === 60 ? 0 : normalizedRemainder);
+
+  if (normalizedRemainder === 60) {
+    $("unitHoursWholeInput").value = wholeHours + 1;
+  }
 }
 
-function validateManualHours(hours) {
-  if (!Number.isFinite(hours) || hours <= 0) return false;
-  const fraction = Number((hours - Math.floor(hours)).toFixed(2));
-  return [0, 0.25, 0.5].includes(fraction);
+function getTargetMinutesFromInputs() {
+  const hoursText = $("unitHoursWholeInput").value.trim();
+  const hours = hoursText === "" ? 0 : Number(hoursText);
+  const minutes = Number($("unitMinutesSelect").value || 0);
+
+  if (!Number.isInteger(hours) || hours < 0) return NaN;
+  if (![0, 15, 30, 45].includes(minutes)) return NaN;
+
+  return hours * 60 + minutes;
 }
 
 function validateAllocationStep() {
   const user = getActiveUser();
-  const hoursValue = $("unitHoursInput").value.trim();
   const percentageValue = $("unitPercentageInput").value.trim();
-  const calculatedAvailable = calculateAvailableMinutesForClass(user, unitDraft.classSpec, editingUnitId);
+  const manualTargetMinutes = getTargetMinutesFromInputs();
+  const hasManualTime =
+    $("unitHoursWholeInput").value.trim() !== "" ||
+    Number($("unitMinutesSelect").value || 0) > 0;
 
-  if (hoursValue) {
-    const hours = Number(hoursValue);
-    if (!validateManualHours(hours)) {
-      alert("Use whole hours, .25 (15 minutes), or .5 (30 minutes). For example: 20, 20.25, or 20.5.");
+  const calculatedAvailable = calculateAvailableMinutesForClass(
+    user,
+    unitDraft.classSpec,
+    editingUnitId
+  );
+
+  if (hasManualTime) {
+    if (!Number.isFinite(manualTargetMinutes) || manualTargetMinutes <= 0) {
+      alert("Enter at least 15 minutes of instructional time.");
       return false;
     }
-    unitDraft.targetMinutes = Math.round(hours * 60);
+
+    unitDraft.targetMinutes = manualTargetMinutes;
     unitDraft.allocationMethod = "hours";
     unitDraft.allocationPercentage = null;
     unitDraft.availableMinutesAtCreation = calculatedAvailable;
@@ -2314,20 +2435,29 @@ function validateAllocationStep() {
 
   if (percentageValue) {
     const percentage = Number(percentageValue);
+
     if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
       alert("Enter a percentage between 0 and 100.");
       return false;
     }
+
     let available = calculatedAvailable;
+
     if (available <= 0) {
       const manualHours = Number($("manualAvailableHoursInput").value);
+
       if (!Number.isFinite(manualHours) || manualHours <= 0) {
-        alert("No matching instructional blocks were found. Enter the total instructional hours available for this class.");
+        alert(
+          "No matching instructional blocks were found. Enter the total instructional hours available for this class."
+        );
         return false;
       }
+
       available = Math.round(manualHours * 60);
     }
+
     const rawTarget = available * (percentage / 100);
+
     unitDraft.targetMinutes = Math.ceil(rawTarget / 15) * 15;
     unitDraft.allocationMethod = "percentage";
     unitDraft.allocationPercentage = percentage;
@@ -2335,39 +2465,57 @@ function validateAllocationStep() {
     return true;
   }
 
-  alert("Enter either hours allocated to the unit or a percentage of available instructional time.");
+  alert("Enter either hours/minutes allocated to the unit or a percentage of available instructional time.");
   return false;
 }
 
 function updateAllocationSummary() {
   if (!unitDraft?.classSpec?.subject) return;
+
   const user = getActiveUser();
-  const available = calculateAvailableMinutesForClass(user, unitDraft.classSpec, editingUnitId);
+  const available = calculateAvailableMinutesForClass(
+    user,
+    unitDraft.classSpec,
+    editingUnitId
+  );
+
   $("manualAvailableHoursField").classList.toggle("hidden", available > 0);
   $("availableHoursText").textContent = available > 0
     ? `${hoursLabel(available)} of usable instructional time found in the master calendar (days off excluded).`
     : "No matching instructional blocks were found in the master calendar.";
 
   const summary = $("unitAllocationSummary");
-  const hoursValue = $("unitHoursInput").value.trim();
+  const targetMinutes = getTargetMinutesFromInputs();
+  const hasManualTime =
+    $("unitHoursWholeInput").value.trim() !== "" ||
+    Number($("unitMinutesSelect").value || 0) > 0;
+
   const percentageValue = $("unitPercentageInput").value.trim();
-  if (hoursValue) {
-    const hours = Number(hoursValue);
-    summary.textContent = Number.isFinite(hours) ? `Target: ${hours} hours.` : "";
-    summary.classList.toggle("hidden", !summary.textContent);
+
+  if (hasManualTime && Number.isFinite(targetMinutes) && targetMinutes > 0) {
+    summary.textContent = `Target: ${hoursLabel(targetMinutes)}.`;
+    summary.classList.remove("hidden");
     return;
   }
+
   if (percentageValue) {
     const percentage = Number(percentageValue);
     let base = available;
-    if (base <= 0) base = Number($("manualAvailableHoursInput").value || 0) * 60;
+
+    if (base <= 0) {
+      base = Number($("manualAvailableHoursInput").value || 0) * 60;
+    }
+
     if (percentage > 0 && base > 0) {
       const target = Math.ceil((base * percentage / 100) / 15) * 15;
-      summary.textContent = `${percentage}% of ${hoursLabel(base)} = ${hoursLabel(target)} allocated (rounded up to a 15-minute increment when needed).`;
+      summary.textContent =
+        `${percentage}% of ${hoursLabel(base)} = ${hoursLabel(target)} allocated ` +
+        "(rounded up to a 15-minute increment when needed).";
       summary.classList.remove("hidden");
       return;
     }
   }
+
   summary.classList.add("hidden");
 }
 
@@ -2375,119 +2523,450 @@ function updateAllocationSummary() {
    CURRICULUM BROWSER
 ============================================================ */
 
-
 function buildSelectedCurriculumSnapshots() {
+  const user = getActiveUser();
   const catalogIds = new Set(CURRICULUM.map(record => record.id));
+
   const selectedFromCatalog = CURRICULUM
     .filter(record => unitCurriculumSelection.has(record.id))
-    .map(record => structuredCloneSafe(record));
-  const preservedSnapshots = (unitDraft?.selectedCurriculum || [])
+    .map(record => enrichCurriculumSnapshot(record, user));
+
+  const preservedSnapshots = (
+    unitDraft?.curriculumLinks?.working ||
+    unitDraft?.selectedCurriculum ||
+    []
+  )
     .filter(record => !catalogIds.has(record.id) && unitCurriculumSelection.has(record.id))
-    .map(record => structuredCloneSafe(record));
+    .map(record => enrichCurriculumSnapshot(record, user));
+
   return [...selectedFromCatalog, ...preservedSnapshots];
+}
+
+function enrichCurriculumSnapshot(record, user = getActiveUser()) {
+  const snapshot = structuredCloneSafe(record);
+  if (record.type === "Skills & Procedures") {
+    const analysis = analyzeCurriculumVerb(record.text);
+    snapshot.keyVerb = analysis.keyVerb;
+    snapshot.bloomMatches = [...analysis.matches];
+    snapshot.bloomLevel = getCurriculumBloomLevel(record, user, analysis);
+  }
+  return snapshot;
 }
 
 function getCurriculumForClass(classSpec) {
   const subject = String(classSpec?.subject || "").toLowerCase();
   const grades = normalizeGradeArray(classSpec?.grades || []);
+
   return CURRICULUM.filter(record =>
-    String(record.subject || "").toLowerCase() === subject && grades.includes(record.grade)
+    String(record.subject || "").toLowerCase() === subject &&
+    grades.includes(record.grade)
   );
 }
 
-function renderCurriculumBrowser() {
+function getBloomPhrases() {
+  const phrases = new Set();
+  BLOOM_LEVELS.forEach(level => {
+    (BLOOM_REFERENCE.levels?.[level] || []).forEach(phrase => {
+      if (phrase) phrases.add(String(phrase).trim().toLowerCase());
+    });
+  });
+
+  return [...phrases].sort((a, b) => b.length - a.length);
+}
+
+function analyzeCurriculumVerb(text) {
+  const original = String(text || "").trim();
+  const lower = original.toLowerCase();
+  const phrases = getBloomPhrases();
+
+  let matchedPhrase = "";
+
+  for (const phrase of phrases) {
+    if (
+      lower === phrase ||
+      lower.startsWith(`${phrase} `) ||
+      lower.startsWith(`${phrase},`) ||
+      lower.startsWith(`${phrase}.`) ||
+      lower.startsWith(`${phrase}:`)
+    ) {
+      matchedPhrase = phrase;
+      break;
+    }
+  }
+
+  let keyVerb = "";
+
+  if (matchedPhrase) {
+    keyVerb = original.slice(0, matchedPhrase.length);
+  } else {
+    const fallback = original.match(/^[A-Za-zÀ-ÖØ-öø-ÿ'-]+/);
+    keyVerb = fallback?.[0] || "";
+  }
+
+  const normalizedVerb = keyVerb.toLowerCase();
+  const matches = BLOOM_LEVELS.filter(level =>
+    (BLOOM_REFERENCE.levels?.[level] || [])
+      .some(verb => String(verb).trim().toLowerCase() === normalizedVerb)
+  );
+
+  const preferred = BLOOM_REFERENCE.preferred?.[normalizedVerb];
+  let suggested = "";
+
+  if (preferred && matches.includes(preferred)) {
+    suggested = preferred;
+  } else if (matches.length === 1) {
+    suggested = matches[0];
+  } else if (matches.length > 1) {
+    suggested = matches[Math.floor((matches.length - 1) / 2)];
+  }
+
+  return {
+    keyVerb,
+    normalizedVerb,
+    matches,
+    suggested
+  };
+}
+
+function getCurriculumBloomLevel(record, user = getActiveUser(), analysis = null) {
+  if (!record || record.type !== "Skills & Procedures") return "";
+
+  const override = user?.bloomOverrides?.[record.id];
+  if (BLOOM_LEVELS.includes(override)) return override;
+
+  const resolvedAnalysis = analysis || analyzeCurriculumVerb(record.text);
+  return resolvedAnalysis.suggested || "";
+}
+
+function getBloomBand(level) {
+  return BLOOM_BANDS[level] || "neutral";
+}
+
+function makeCurriculumText(record, user) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "curriculum-objective-copy";
+
+  const text = document.createElement("span");
+  text.className = "curriculum-leaf-text";
+
+  if (record.type !== "Skills & Procedures") {
+    text.textContent = record.text;
+    wrapper.appendChild(text);
+    return wrapper;
+  }
+
+  const analysis = analyzeCurriculumVerb(record.text);
+  const level = getCurriculumBloomLevel(record, user, analysis);
+  const band = getBloomBand(level);
+
+  if (analysis.keyVerb && record.text.toLowerCase().startsWith(analysis.keyVerb.toLowerCase())) {
+    const verb = document.createElement("mark");
+    verb.className = `curriculum-key-verb bloom-band-${band}`;
+    verb.textContent = record.text.slice(0, analysis.keyVerb.length);
+
+    text.appendChild(verb);
+    text.appendChild(document.createTextNode(record.text.slice(analysis.keyVerb.length)));
+  } else {
+    text.textContent = record.text;
+  }
+
+  wrapper.appendChild(text);
+
+  const meta = document.createElement("div");
+  meta.className = "curriculum-verb-meta";
+
+  const verbBadge = document.createElement("span");
+  verbBadge.className = `curriculum-verb-badge bloom-band-${band}`;
+  verbBadge.textContent = analysis.keyVerb
+    ? `Verb: ${analysis.keyVerb}`
+    : "Verb not detected";
+
+  const bloomSelect = document.createElement("select");
+  bloomSelect.className = `curriculum-bloom-select bloom-band-${band}`;
+  bloomSelect.setAttribute("aria-label", `Bloom classification for ${analysis.keyVerb || "this objective"}`);
+
+  const automatic = document.createElement("option");
+  automatic.value = "";
+
+  if (analysis.suggested) {
+    automatic.textContent = user?.bloomOverrides?.[record.id]
+      ? `Use suggestion: ${analysis.suggested}`
+      : `Suggested: ${analysis.suggested}`;
+  } else {
+    automatic.textContent = "Bloom: choose level";
+  }
+
+  bloomSelect.appendChild(automatic);
+
+  BLOOM_LEVELS.forEach(item => {
+    const option = document.createElement("option");
+    option.value = item;
+    option.textContent = item;
+    bloomSelect.appendChild(option);
+  });
+
+  bloomSelect.value = user?.bloomOverrides?.[record.id] || "";
+  bloomSelect.disabled = readOnlyMode;
+
+  bloomSelect.addEventListener("click", event => {
+    event.stopPropagation();
+  });
+
+  bloomSelect.addEventListener("change", () => {
+    const activeUser = getActiveUser();
+    if (!activeUser || readOnlyMode) return;
+
+    if (!activeUser.bloomOverrides || typeof activeUser.bloomOverrides !== "object") {
+      activeUser.bloomOverrides = {};
+    }
+
+    if (bloomSelect.value) {
+      activeUser.bloomOverrides[record.id] = bloomSelect.value;
+    } else {
+      delete activeUser.bloomOverrides[record.id];
+    }
+
+    saveData();
+
+    if (unitDraft) {
+      renderCurriculumBrowserPreservingOpenState();
+    } else if (activeUnitWorkspaceId) {
+      renderUnitWorkspace();
+    }
+  });
+
+  meta.append(verbBadge, bloomSelect);
+
+  if (analysis.matches.length > 1 && !user?.bloomOverrides?.[record.id]) {
+    const note = document.createElement("span");
+    note.className = "curriculum-bloom-note";
+    note.textContent = `Also appears in: ${analysis.matches.filter(item => item !== analysis.suggested).join(", ")}`;
+    meta.appendChild(note);
+  } else if (!analysis.matches.length) {
+    const note = document.createElement("span");
+    note.className = "curriculum-bloom-note";
+    note.textContent = "Not found in the supplied Bloom verb table.";
+    meta.appendChild(note);
+  }
+
+  wrapper.appendChild(meta);
+  return wrapper;
+}
+
+function captureCurriculumOpenState() {
+  const openIds = new Set();
+  document
+    .querySelectorAll("#curriculumBrowser details[open][data-curriculum-branch-id]")
+    .forEach(element => openIds.add(element.dataset.curriculumBranchId));
+
+  return openIds;
+}
+
+function renderCurriculumBrowserPreservingOpenState() {
+  const openState = captureCurriculumOpenState();
+  renderCurriculumBrowser(openState);
+}
+
+function renderCurriculumBrowser(openState = null) {
   const container = $("curriculumBrowser");
   const empty = $("curriculumEmptyMessage");
+  const user = getActiveUser();
+
   container.innerHTML = "";
-  const records = getCurriculumForClass(unitDraft.classSpec);
+
+  const records = getCurriculumForClass(unitDraft?.classSpec);
+
   if (!records.length) {
     empty.classList.remove("hidden");
+    $("selectAllCurriculumButton").disabled = true;
+    $("clearCurriculumSelectionButton").disabled = true;
     return;
   }
+
   empty.classList.add("hidden");
+  $("selectAllCurriculumButton").disabled = false;
 
   const byGrade = groupBy(records, record => record.grade);
+
   Object.entries(byGrade).forEach(([grade, gradeRecords]) => {
     const gradeSection = document.createElement("details");
+    const gradeBranchId = `grade::${grade}`;
+
     gradeSection.className = "curriculum-level curriculum-grade";
-    gradeSection.open = true;
+    gradeSection.dataset.curriculumBranchId = gradeBranchId;
+    gradeSection.open = openState ? openState.has(gradeBranchId) : true;
+
     const summary = document.createElement("summary");
-    summary.innerHTML = `<strong>${escapeHTML(grade)} ${escapeHTML(unitDraft.classSpec.subject)}</strong>`;
-    summary.appendChild(makeSelectAllButton(gradeRecords, "Select all"));
+
+    const summaryMain = document.createElement("div");
+    summaryMain.className = "curriculum-summary-main";
+
+    const chevron = document.createElement("span");
+    chevron.className = "curriculum-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+
+    const title = document.createElement("div");
+    title.className = "curriculum-card-title";
+    title.innerHTML = `<strong>${escapeHTML(grade)} ${escapeHTML(unitDraft.classSpec.subject)}</strong><small>Curriculum</small>`;
+
+    summaryMain.append(chevron, title);
+    summary.append(summaryMain, makeCurriculumSelectionControls(gradeRecords));
     gradeSection.appendChild(summary);
 
-    const byOrganizingIdea = groupBy(gradeRecords, record => `${record.organizingIdea}|||${record.organizingIdeaDescription || ""}`);
+    const byOrganizingIdea = groupBy(
+      gradeRecords,
+      record => `${record.organizingIdea}|||${record.organizingIdeaDescription || ""}`
+    );
+
     Object.entries(byOrganizingIdea).forEach(([oiKey, oiRecords]) => {
       const [oi, description] = oiKey.split("|||");
       const section = document.createElement("details");
+      const branchId = `${gradeBranchId}::oi::${oi}`;
+
       section.className = "curriculum-level curriculum-organizing-idea";
+      section.dataset.curriculumBranchId = branchId;
+      section.open = openState?.has(branchId) || false;
+
       const oiSummary = document.createElement("summary");
+      const oiMain = document.createElement("div");
+      oiMain.className = "curriculum-summary-main";
+
+      const chevron = document.createElement("span");
+      chevron.className = "curriculum-chevron";
+      chevron.setAttribute("aria-hidden", "true");
+
       const text = document.createElement("div");
       text.className = "curriculum-card-title";
       text.innerHTML = `<strong>${escapeHTML(oi)}</strong><small>${escapeHTML(description)}</small>`;
-      oiSummary.append(text, makeSelectAllButton(oiRecords, "Select all"));
+
+      oiMain.append(chevron, text);
+      oiSummary.append(oiMain, makeCurriculumSelectionControls(oiRecords));
       section.appendChild(oiSummary);
 
       const byGQ = groupBy(oiRecords, record => record.guidingQuestion || "Guiding Question");
-      Object.entries(byGQ).forEach(([gq, gqRecords]) => {
+
+      Object.entries(byGQ).forEach(([gq, gqRecords], gqIndex) => {
         const gqSection = document.createElement("details");
+        const gqBranchId = `${branchId}::gq::${gqIndex}`;
+
         gqSection.className = "curriculum-level curriculum-gq";
+        gqSection.dataset.curriculumBranchId = gqBranchId;
+        gqSection.open = openState?.has(gqBranchId) || false;
+
         const gqSummary = document.createElement("summary");
+        const gqMain = document.createElement("div");
+        gqMain.className = "curriculum-summary-main";
+
+        const chevron = document.createElement("span");
+        chevron.className = "curriculum-chevron";
+        chevron.setAttribute("aria-hidden", "true");
+
         const gqText = document.createElement("div");
         gqText.className = "curriculum-card-title";
-        gqText.innerHTML = `<strong>${escapeHTML(gq)}</strong>`;
-        gqSummary.append(gqText, makeSelectAllButton(gqRecords, "Select all"));
+        gqText.innerHTML = `<span class="curriculum-level-label">Guiding Question</span><strong>${escapeHTML(gq)}</strong>`;
+
+        gqMain.append(chevron, gqText);
+        gqSummary.append(gqMain, makeCurriculumSelectionControls(gqRecords));
         gqSection.appendChild(gqSummary);
 
         const byLO = groupBy(gqRecords, record => record.learningOutcome || "Learning Outcome");
-        Object.entries(byLO).forEach(([lo, loRecords]) => {
+
+        Object.entries(byLO).forEach(([lo, loRecords], loIndex) => {
           const loSection = document.createElement("details");
+          const loBranchId = `${gqBranchId}::lo::${loIndex}`;
+
           loSection.className = "curriculum-level curriculum-lo";
+          loSection.dataset.curriculumBranchId = loBranchId;
+          loSection.open = openState?.has(loBranchId) || false;
+
           const loSummary = document.createElement("summary");
+          const loMain = document.createElement("div");
+          loMain.className = "curriculum-summary-main";
+
+          const chevron = document.createElement("span");
+          chevron.className = "curriculum-chevron";
+          chevron.setAttribute("aria-hidden", "true");
+
           const loText = document.createElement("div");
           loText.className = "curriculum-card-title";
-          loText.innerHTML = `<strong>${escapeHTML(lo)}</strong>`;
-          loSummary.append(loText, makeSelectAllButton(loRecords, "Select all"));
+          loText.innerHTML = `<span class="curriculum-level-label">Learning Outcome</span><strong>${escapeHTML(lo)}</strong>`;
+
+          loMain.append(chevron, loText);
+          loSummary.append(loMain, makeCurriculumSelectionControls(loRecords));
           loSection.appendChild(loSummary);
 
           ["Knowledge", "Understanding", "Skills & Procedures"].forEach(type => {
             const typeRecords = loRecords.filter(record => record.type === type);
             if (!typeRecords.length) return;
-            const typeBox = document.createElement("div");
-            typeBox.className = "curriculum-type-box";
+
+            const typeBox = document.createElement("section");
+            typeBox.className = `curriculum-type-box curriculum-type-${type.toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`;
+
             const typeHeader = document.createElement("div");
             typeHeader.className = "curriculum-type-header";
+
+            const headingWrap = document.createElement("div");
+            headingWrap.className = "curriculum-type-heading";
+
             const heading = document.createElement("strong");
             heading.textContent = type;
-            typeHeader.append(heading, makeSelectAllButton(typeRecords, "Select all"));
+
+            const count = document.createElement("span");
+            count.className = "curriculum-type-count";
+            count.textContent = `${typeRecords.length} item${typeRecords.length === 1 ? "" : "s"}`;
+
+            headingWrap.append(heading, count);
+            typeHeader.append(headingWrap, makeCurriculumSelectionControls(typeRecords));
             typeBox.appendChild(typeHeader);
+
+            const leafList = document.createElement("div");
+            leafList.className = "curriculum-leaf-list";
+
             typeRecords.forEach(record => {
               const label = document.createElement("label");
               label.className = "curriculum-leaf";
+
               const checkbox = document.createElement("input");
               checkbox.type = "checkbox";
+              checkbox.dataset.curriculumId = record.id;
               checkbox.checked = unitCurriculumSelection.has(record.id);
+
               checkbox.addEventListener("change", () => {
                 if (checkbox.checked) unitCurriculumSelection.add(record.id);
                 else unitCurriculumSelection.delete(record.id);
-                refreshCurriculumSelectAllStates();
+
+                label.classList.toggle("selected", checkbox.checked);
+                syncCurriculumSelectionUI();
               });
-              const span = document.createElement("span");
-              span.textContent = record.text;
-              label.append(checkbox, span);
-              typeBox.appendChild(label);
+
+              const visualCheck = document.createElement("span");
+              visualCheck.className = "curriculum-checkmark";
+              visualCheck.setAttribute("aria-hidden", "true");
+
+              const objective = makeCurriculumText(record, user);
+
+              label.classList.toggle("selected", checkbox.checked);
+              label.append(checkbox, visualCheck, objective);
+              leafList.appendChild(label);
             });
+
+            typeBox.appendChild(leafList);
             loSection.appendChild(typeBox);
           });
+
           gqSection.appendChild(loSection);
         });
+
         section.appendChild(gqSection);
       });
+
       gradeSection.appendChild(section);
     });
+
     container.appendChild(gradeSection);
   });
-  refreshCurriculumSelectAllStates();
+
+  syncCurriculumSelectionUI();
 }
 
 function groupBy(records, keyFn) {
@@ -2498,30 +2977,78 @@ function groupBy(records, keyFn) {
   }, {});
 }
 
-function makeSelectAllButton(records, labelText) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "curriculum-select-all";
-  button.textContent = labelText;
-  button.dataset.ids = records.map(record => record.id).join("|");
-  button.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    const ids = records.map(record => record.id);
-    const allSelected = ids.every(id => unitCurriculumSelection.has(id));
-    ids.forEach(id => allSelected ? unitCurriculumSelection.delete(id) : unitCurriculumSelection.add(id));
-    renderCurriculumBrowser();
+function makeCurriculumSelectionControls(records) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "curriculum-selection-controls";
+  wrapper.dataset.ids = records.map(record => record.id).join("|");
+
+  const count = document.createElement("span");
+  count.className = "curriculum-selection-count";
+
+  const selectButton = document.createElement("button");
+  selectButton.type = "button";
+  selectButton.className = "curriculum-select-all";
+  selectButton.textContent = "Select all";
+
+  const clearButton = document.createElement("button");
+  clearButton.type = "button";
+  clearButton.className = "curriculum-clear-all";
+  clearButton.textContent = "Clear all";
+
+  [selectButton, clearButton].forEach(button => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
   });
-  return button;
+
+  selectButton.addEventListener("click", () => {
+    records.forEach(record => unitCurriculumSelection.add(record.id));
+    syncCurriculumSelectionUI();
+  });
+
+  clearButton.addEventListener("click", () => {
+    records.forEach(record => unitCurriculumSelection.delete(record.id));
+    syncCurriculumSelectionUI();
+  });
+
+  wrapper.append(count, selectButton, clearButton);
+  return wrapper;
+}
+
+function syncCurriculumSelectionUI() {
+  document
+    .querySelectorAll('#curriculumBrowser input[data-curriculum-id]')
+    .forEach(checkbox => {
+      checkbox.checked = unitCurriculumSelection.has(checkbox.dataset.curriculumId);
+      checkbox.closest(".curriculum-leaf")?.classList.toggle("selected", checkbox.checked);
+    });
+
+  document
+    .querySelectorAll("#curriculumBrowser .curriculum-selection-controls")
+    .forEach(wrapper => {
+      const ids = wrapper.dataset.ids.split("|").filter(Boolean);
+      const selectedCount = ids.filter(id => unitCurriculumSelection.has(id)).length;
+
+      const count = wrapper.querySelector(".curriculum-selection-count");
+      const selectButton = wrapper.querySelector(".curriculum-select-all");
+      const clearButton = wrapper.querySelector(".curriculum-clear-all");
+
+      if (count) count.textContent = `${selectedCount}/${ids.length}`;
+      if (selectButton) selectButton.disabled = ids.length > 0 && selectedCount === ids.length;
+      if (clearButton) clearButton.disabled = selectedCount === 0;
+    });
+
+  const classRecords = getCurriculumForClass(unitDraft?.classSpec);
+  const allSelected = classRecords.length > 0 &&
+    classRecords.every(record => unitCurriculumSelection.has(record.id));
+
+  $("selectAllCurriculumButton").disabled = allSelected || classRecords.length === 0;
+  $("clearCurriculumSelectionButton").disabled = unitCurriculumSelection.size === 0;
 }
 
 function refreshCurriculumSelectAllStates() {
-  document.querySelectorAll(".curriculum-select-all").forEach(button => {
-    const ids = button.dataset.ids.split("|").filter(Boolean);
-    const all = ids.length && ids.every(id => unitCurriculumSelection.has(id));
-    button.textContent = all ? "Clear all" : "Select all";
-    button.classList.toggle("selected", all);
-  });
+  syncCurriculumSelectionUI();
 }
 
 /* ============================================================
@@ -2622,10 +3149,15 @@ function renderUnitColourStatus() {
     return;
   }
   const duplicate = unitColourUsedByClass(getActiveUser(), unitDraft.classSpec, typed, editingUnitId);
-  status.textContent = duplicate
-    ? "That colour is already used by another unit in this grade/subject. Choose a different one."
-    : "Unique for this grade/subject.";
-  status.className = `unit-colour-status ${duplicate ? "colour-status-error" : "colour-status-ok"}`;
+
+  if (duplicate) {
+    status.textContent = "That colour is already used by another unit in this grade/subject. Choose a different one.";
+    status.className = "unit-colour-status colour-status-error";
+    status.classList.remove("hidden");
+  } else {
+    status.textContent = "";
+    status.className = "unit-colour-status colour-status-ok hidden";
+  }
 }
 
 function defaultUnitMonth(user, unit) {
@@ -2646,16 +3178,29 @@ function defaultUnitMonth(user, unit) {
 function renderUnitCalendar() {
   const user = getActiveUser();
   const grid = $("unitCalendarGrid");
+
   grid.innerHTML = "";
-  if (!unitVisibleDate) unitVisibleDate = defaultUnitMonth(user, unitDraft);
-  $("unitMonthTitle").textContent = unitVisibleDate.toLocaleDateString("en-CA", { month: "long", year: "numeric" });
+
+  if (!unitVisibleDate) {
+    unitVisibleDate = defaultUnitMonth(user, unitDraft);
+  }
+
+  $("unitMonthTitle").textContent = unitVisibleDate.toLocaleDateString("en-CA", {
+    month: "long",
+    year: "numeric"
+  });
+
   syncUnitColourControls();
 
   ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((weekday, index) => {
     const heading = document.createElement("div");
     heading.className = "weekday";
     heading.textContent = weekday;
-    if (index === 0 || index === 6) heading.classList.add("weekend-heading");
+
+    if (index === 0 || index === 6) {
+      heading.classList.add("weekend-heading");
+    }
+
     grid.appendChild(heading);
   });
 
@@ -2663,19 +3208,29 @@ function renderUnitCalendar() {
   const month = unitVisibleDate.getMonth();
   const first = new Date(year, month, 1).getDay();
   const days = new Date(year, month + 1, 0).getDate();
+
   for (let i = 0; i < first; i++) {
     const empty = document.createElement("div");
     empty.className = "day empty";
     grid.appendChild(empty);
   }
 
+  const sameClassUnits = (user?.units || []).filter(unit =>
+    unit.id !== editingUnitId &&
+    classKey(unit.classSpec) === classKey(unitDraft.classSpec)
+  );
+
   for (let day = 1; day <= days; day++) {
     const date = new Date(year, month, day);
     const dateKey = getLocalDateKey(date);
+
     const cell = document.createElement("button");
     cell.type = "button";
     cell.className = "day unit-calendar-day";
-    if (date.getDay() === 0 || date.getDay() === 6) cell.classList.add("weekend");
+
+    if (date.getDay() === 0 || date.getDay() === 6) {
+      cell.classList.add("weekend");
+    }
 
     const number = document.createElement("span");
     number.className = "day-number";
@@ -2685,47 +3240,93 @@ function renderUnitCalendar() {
     const exception = getExceptionForDate(user, dateKey);
     const lessonsHere = unitDraft.lessons.filter(lesson => lesson.dateKey === dateKey);
 
+    const otherUnitLessons = [];
+
+    sameClassUnits.forEach(unit => {
+      unit.lessons
+        .filter(lesson => lesson.dateKey === dateKey)
+        .forEach(lesson => {
+          otherUnitLessons.push({ unit, lesson });
+        });
+    });
+
     if (exception) {
-      cell.classList.add("unit-off-day", `unit-off-${exception.type.toLowerCase().replaceAll(" ", "-")}`);
+      cell.classList.add(
+        "unit-off-day",
+        `unit-off-${exception.type.toLowerCase().replaceAll(" ", "-")}`
+      );
+
       const label = document.createElement("span");
       label.className = "unit-calendar-note off-note";
       label.textContent = exception.label || exception.type;
       cell.appendChild(label);
-    } else if (lessonsHere.length) {
-      const colour = normalizeHexColour(unitDraft.colour) || "#8C6CFF";
-      cell.classList.add("unit-lesson-date");
-      cell.style.setProperty("--unit-colour", colour);
-      cell.style.setProperty("--unit-colour-soft", hexToRgba(colour, 0.22));
-      lessonsHere.forEach(lesson => {
-        const label = document.createElement("span");
-        label.className = "unit-calendar-note unit-lesson-note";
-        label.textContent = lessonDisplayTitle(lesson);
-        cell.appendChild(label);
-      });
     } else {
-      const matching = dedupeClassOccurrences(getOccurrencesForDate(date, user).filter(item => classMatches(item.block, unitDraft.classSpec)));
-      const available = matching.filter(item => !isOccurrenceAllocated(user, item, editingUnitId));
-      const allocated = matching.length - available.length;
+      if (lessonsHere.length) {
+        const colour = normalizeHexColour(unitDraft.colour) || "#8C6CFF";
+
+        cell.classList.add("unit-lesson-date");
+        cell.style.setProperty("--unit-colour", colour);
+        cell.style.setProperty("--unit-colour-soft", hexToRgba(colour, 0.22));
+
+        lessonsHere.forEach(lesson => {
+          const label = document.createElement("span");
+          label.className = "unit-calendar-note unit-lesson-note";
+          label.textContent = lessonDisplayTitle(lesson);
+          label.style.setProperty("--lesson-colour", colour);
+          label.style.setProperty("--lesson-colour-soft", hexToRgba(colour, 0.22));
+          cell.appendChild(label);
+        });
+      }
+
+      otherUnitLessons
+        .sort((a, b) =>
+          a.lesson.startTime.localeCompare(b.lesson.startTime) ||
+          a.unit.name.localeCompare(b.unit.name)
+        )
+        .forEach(({ unit, lesson }) => {
+          const colour = normalizeHexColour(unit.colour) || "#8C6CFF";
+          const label = document.createElement("span");
+
+          label.className = "unit-calendar-note other-unit-note";
+          label.style.setProperty("--other-unit-colour", colour);
+          label.style.setProperty("--other-unit-colour-soft", hexToRgba(colour, 0.2));
+          label.innerHTML =
+            `<small>${escapeHTML(unit.name)}</small>` +
+            `<strong>${escapeHTML(lessonDisplayTitle(lesson))}</strong>`;
+
+          cell.appendChild(label);
+        });
+
+      const matching = dedupeClassOccurrences(
+        getOccurrencesForDate(date, user)
+          .filter(item => classMatches(item.block, unitDraft.classSpec))
+      );
+
+      const available = matching.filter(
+        item => !isOccurrenceAllocated(user, item, editingUnitId)
+      );
+
       if (available.length) {
         cell.classList.add("unit-class-available");
+
         const marker = document.createElement("span");
         marker.className = "unit-calendar-note available-note";
-        marker.textContent = "Available";
+        marker.textContent = available.length === 1
+          ? "Available"
+          : `${available.length} blocks available`;
+
         cell.appendChild(marker);
-      }
-      if (allocated > 0) {
-        const label = document.createElement("span");
-        label.className = "unit-calendar-note allocated-note";
-        label.textContent = allocated === 1 ? "Used by another unit" : `${allocated} blocks already used`;
-        cell.appendChild(label);
       }
     }
 
     if (unitDraft.startDate === dateKey) {
       cell.classList.add("unit-start-date");
+
       const colour = normalizeHexColour(unitDraft.colour) || "#8C6CFF";
+
       cell.style.setProperty("--unit-colour", colour);
       cell.style.setProperty("--unit-colour-soft", hexToRgba(colour, 0.22));
+
       if (!lessonsHere.length) {
         const startLabel = document.createElement("span");
         startLabel.className = "unit-calendar-note unit-start-note";
@@ -2737,6 +3338,7 @@ function renderUnitCalendar() {
     cell.addEventListener("click", () => chooseUnitStartDate(dateKey));
     grid.appendChild(cell);
   }
+
   renderUnitLessonPreview();
 }
 
@@ -2834,6 +3436,8 @@ function saveUnitFromWizard() {
 
   unitDraft.name = $("unitNameInput").value.trim() || unitDraft.name;
   unitDraft.selectedCurriculum = buildSelectedCurriculumSnapshots();
+  unitDraft.curriculumLinks ||= { working: [], prerequisite: [], lookingAhead: [], crossCurricular: [] };
+  unitDraft.curriculumLinks.working = structuredCloneSafe(unitDraft.selectedCurriculum);
   unitDraft.updatedAt = new Date().toISOString();
   if (!unitDraft.createdAt) unitDraft.createdAt = unitDraft.updatedAt;
 
@@ -2866,79 +3470,580 @@ function reconcileFutureUnits(user, fromDateKey) {
 }
 
 /* ============================================================
-   UNIT DETAILS + SELECTABLE LESSON PLACEHOLDERS
+   UNIT WORKSPACE + SELECTABLE LESSON PLACEHOLDERS
 ============================================================ */
 
-$("closeUnitDetailButton").addEventListener("click", () => unitDetailDialog.close());
-$("editUnitButton").addEventListener("click", () => {
-  const unitId = $("editUnitButton").dataset.unitId;
+$("closeUnitDetailButton").addEventListener("click", () => {
   unitDetailDialog.close();
-  openUnitWizard(unitId);
+  activeUnitWorkspaceId = null;
+  activeUnitWorkspaceSection = null;
 });
+
 $("closeLessonPlaceholderButton").addEventListener("click", () => lessonPlaceholderDialog.close());
+
 $("startLessonPlannerButton").addEventListener("click", () => {
   if (!selectedLessonContext) return;
-  alert("This lesson placeholder is ready for the Lesson Plan Builder. The guided lesson-planning wizard is the next feature we will attach here.");
+  alert(
+    "This lesson placeholder is ready for the Lesson Plan Builder. " +
+    "The full living lesson-planning workspace will attach to this exact record in a later release."
+  );
 });
+
+$("unitWorkspacePreviousMonth").addEventListener("click", () => {
+  if (!unitWorkspaceVisibleDate) return;
+  unitWorkspaceVisibleDate = new Date(
+    unitWorkspaceVisibleDate.getFullYear(),
+    unitWorkspaceVisibleDate.getMonth() - 1,
+    1
+  );
+  renderUnitWorkspaceCalendar();
+});
+
+$("unitWorkspaceNextMonth").addEventListener("click", () => {
+  if (!unitWorkspaceVisibleDate) return;
+  unitWorkspaceVisibleDate = new Date(
+    unitWorkspaceVisibleDate.getFullYear(),
+    unitWorkspaceVisibleDate.getMonth() + 1,
+    1
+  );
+  renderUnitWorkspaceCalendar();
+});
+
+$("unitWorkspaceBackToCalendar").addEventListener("click", () => {
+  activeUnitWorkspaceSection = null;
+  renderUnitWorkspace();
+});
+
+$("unitWorkspaceTitleButton").addEventListener("click", beginUnitTitleEdit);
+
+$("unitWorkspaceTitleInput").addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    commitUnitTitleEdit();
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    cancelUnitTitleEdit();
+  }
+});
+
+$("unitWorkspaceTitleInput").addEventListener("blur", commitUnitTitleEdit);
+
+$("unitWorkspaceClassButton").addEventListener("click", () => {
+  openWorkspaceUnitWizardStep(1);
+});
+
+$("unitWorkspaceDateButton").addEventListener("click", () => {
+  openWorkspaceUnitWizardStep(4);
+});
+
+$("unitWorkspaceTimeButton").addEventListener("click", () => {
+  openWorkspaceUnitWizardStep(3);
+});
+
+$("unitWorkspaceColourButton").addEventListener("click", () => {
+  openWorkspaceUnitWizardStep(4);
+});
+
+$("unitWorkspaceNav").querySelectorAll("[data-unit-section]").forEach(button => {
+  button.addEventListener("click", () => {
+    activeUnitWorkspaceSection = button.dataset.unitSection;
+    renderUnitWorkspace();
+  });
+});
+
+function openWorkspaceUnitWizardStep(step) {
+  const unitId = activeUnitWorkspaceId;
+
+  if (!unitId || readOnlyMode) return;
+
+  unitDetailDialog.close();
+  openUnitWizard(unitId, step);
+}
+
+function unitEndDate(unit) {
+  const lessonDates = (unit?.lessons || [])
+    .map(lesson => lesson.dateKey)
+    .filter(Boolean)
+    .sort();
+
+  if (lessonDates.length) return lessonDates.at(-1);
+  return unit?.startDate || "";
+}
+
+function autosaveUnit(unit) {
+  if (!unit || readOnlyMode || readOnlySource === "shared") return;
+
+  unit.updatedAt = new Date().toISOString();
+  saveData();
+
+  const user = getActiveUser();
+  if (user) {
+    renderUnitOverview(user);
+    renderUnitPlannerList(user);
+  }
+}
 
 function openUnitDetail(unitId) {
   const user = getActiveUser();
   const unit = getUnitById(unitId, user);
+
   if (!unit) return;
-  $("unitDetailHeading").textContent = unit.name;
-  $("unitDetailHeading").style.setProperty("--unit-colour", unit.colour || "#8C6CFF");
-  $("unitDetailMeta").textContent = `${classLabel(unit.classSpec)}${unit.startDate ? ` · Starts ${formatDate(unit.startDate)}` : " · Draft"}`;
-  $("editUnitButton").dataset.unitId = unit.id;
 
-  const scheduled = unit.lessons.reduce((sum, lesson) => sum + lesson.durationMinutes, 0);
-  const stats = $("unitDetailStats");
-  stats.innerHTML = "";
-  [
-    ["Target", hoursLabel(unit.targetMinutes)],
-    ["Scheduled", hoursLabel(scheduled)],
-    ["Lessons", String(unit.lessons.length)],
-    ["Curriculum Items", String(unit.selectedCurriculum.length)]
-  ].forEach(([label, value]) => {
-    const card = document.createElement("div");
-    card.className = "summary-card";
-    card.innerHTML = `<span class="summary-label">${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong>`;
-    stats.appendChild(card);
-  });
+  activeUnitWorkspaceId = unit.id;
+  activeUnitWorkspaceSection = null;
 
-  const curriculumContainer = $("unitDetailCurriculum");
-  curriculumContainer.innerHTML = "";
-  if (!unit.selectedCurriculum.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty-state";
-    empty.textContent = "No curriculum selected yet. You can add it later.";
-    curriculumContainer.appendChild(empty);
-  } else {
-    unit.selectedCurriculum.forEach(record => {
-      const item = document.createElement("div");
-      item.className = "curriculum-summary-item";
-      item.innerHTML = `<strong>${escapeHTML(record.type)}</strong><span>${escapeHTML(record.text)}</span><small>${escapeHTML(record.grade)} · ${escapeHTML(record.organizingIdea)} · ${escapeHTML(record.guidingQuestion)}</small>`;
-      curriculumContainer.appendChild(item);
-    });
+  const baseDate = unit.startDate
+    ? parseLocalDate(unit.startDate)
+    : defaultUnitMonth(user, unit);
+
+  unitWorkspaceVisibleDate = new Date(
+    baseDate.getFullYear(),
+    baseDate.getMonth(),
+    1
+  );
+
+  renderUnitWorkspace();
+  unitDetailDialog.showModal();
+}
+
+function renderUnitWorkspace() {
+  const user = getActiveUser();
+  const unit = getUnitById(activeUnitWorkspaceId, user);
+
+  if (!unit) {
+    unitDetailDialog.close();
+    return;
   }
 
-  const lessonList = $("unitLessonList");
-  lessonList.innerHTML = "";
+  const endDate = unitEndDate(unit);
+  const dateLabel = unit.startDate
+    ? `${formatDate(unit.startDate)} – ${formatDate(endDate)}`
+    : "Draft · No start date";
+
+  $("unitWorkspaceTitleButton").textContent = unit.name;
+  $("unitWorkspaceTitleInput").value = unit.name;
+  $("unitDetailHeading").textContent = unit.name;
+
+  $("unitWorkspaceTitleButton").classList.toggle("hidden", readOnlyMode);
+  $("unitWorkspaceTitleInput").classList.add("hidden");
+  $("unitDetailHeading").classList.toggle("hidden", !readOnlyMode);
+
+  $("unitDetailMeta").textContent =
+    `${classLabel(unit.classSpec)} · ${dateLabel}`;
+
+  $("unitWorkspaceClassButton").textContent =
+    `Class · ${classLabel(unit.classSpec)}`;
+
+  $("unitWorkspaceDateButton").textContent =
+    unit.startDate
+      ? `Dates · ${formatDate(unit.startDate)} – ${formatDate(endDate)}`
+      : "Dates · Add start date";
+
+  $("unitWorkspaceTimeButton").textContent =
+    `Time · ${hoursLabel(unit.targetMinutes)}`;
+
+  const swatch = $("unitWorkspaceColourSwatch");
+  const colour = normalizeHexColour(unit.colour) || "#8C6CFF";
+  swatch.style.background = colour;
+
+  document
+    .querySelectorAll("#unitWorkspaceNav [data-unit-section]")
+    .forEach(button => {
+      button.classList.toggle(
+        "active",
+        button.dataset.unitSection === activeUnitWorkspaceSection
+      );
+    });
+
+  const calendarView = $("unitWorkspaceCalendarView");
+  const panel = $("unitWorkspacePanel");
+
+  if (!activeUnitWorkspaceSection) {
+    calendarView.classList.remove("hidden");
+    panel.classList.add("hidden");
+    renderUnitWorkspaceCalendar();
+    return;
+  }
+
+  calendarView.classList.add("hidden");
+  panel.classList.remove("hidden");
+  renderUnitWorkspacePanel(unit, activeUnitWorkspaceSection);
+}
+
+function beginUnitTitleEdit() {
+  if (readOnlyMode || !activeUnitWorkspaceId) return;
+
+  const button = $("unitWorkspaceTitleButton");
+  const input = $("unitWorkspaceTitleInput");
+
+  button.classList.add("hidden");
+  input.classList.remove("hidden");
+  input.focus();
+  input.select();
+}
+
+function cancelUnitTitleEdit() {
+  const unit = getUnitById(activeUnitWorkspaceId);
+  const input = $("unitWorkspaceTitleInput");
+  const button = $("unitWorkspaceTitleButton");
+
+  input.value = unit?.name || "";
+  input.classList.add("hidden");
+  button.classList.remove("hidden");
+}
+
+function commitUnitTitleEdit() {
+  if (readOnlyMode || !activeUnitWorkspaceId) return;
+
+  const unit = getUnitById(activeUnitWorkspaceId);
+  const input = $("unitWorkspaceTitleInput");
+  const button = $("unitWorkspaceTitleButton");
+
+  if (!unit || input.classList.contains("hidden")) return;
+
+  const value = input.value.trim();
+
+  if (!value) {
+    input.value = unit.name;
+    input.focus();
+    return;
+  }
+
+  unit.name = value;
+  autosaveUnit(unit);
+
+  input.classList.add("hidden");
+  button.classList.remove("hidden");
+
+  renderUnitWorkspace();
+}
+
+function renderUnitWorkspaceCalendar() {
+  const user = getActiveUser();
+  const currentUnit = getUnitById(activeUnitWorkspaceId, user);
+  const grid = $("unitWorkspaceCalendarGrid");
+  const legend = $("unitWorkspaceCalendarLegend");
+
+  if (!user || !currentUnit) return;
+
+  if (!unitWorkspaceVisibleDate) {
+    unitWorkspaceVisibleDate = defaultUnitMonth(user, currentUnit);
+  }
+
+  grid.innerHTML = "";
+  legend.innerHTML = "";
+
+  $("unitWorkspaceMonthTitle").textContent =
+    unitWorkspaceVisibleDate.toLocaleDateString("en-CA", {
+      month: "long",
+      year: "numeric"
+    });
+
+  ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((weekday, index) => {
+    const heading = document.createElement("div");
+    heading.className = "weekday";
+    heading.textContent = weekday;
+
+    if (index === 0 || index === 6) {
+      heading.classList.add("weekend-heading");
+    }
+
+    grid.appendChild(heading);
+  });
+
+  const year = unitWorkspaceVisibleDate.getFullYear();
+  const month = unitWorkspaceVisibleDate.getMonth();
+  const first = new Date(year, month, 1).getDay();
+  const days = new Date(year, month + 1, 0).getDate();
+
+  for (let index = 0; index < first; index++) {
+    const empty = document.createElement("div");
+    empty.className = "day empty";
+    grid.appendChild(empty);
+  }
+
+  const classUnits = user.units
+    .filter(unit => classKey(unit.classSpec) === classKey(currentUnit.classSpec))
+    .sort((a, b) => (a.startDate || "9999").localeCompare(b.startDate || "9999"));
+
+  for (let day = 1; day <= days; day++) {
+    const date = new Date(year, month, day);
+    const dateKey = getLocalDateKey(date);
+
+    const cell = document.createElement("div");
+    cell.className = "day unit-workspace-calendar-day";
+
+    if (date.getDay() === 0 || date.getDay() === 6) {
+      cell.classList.add("weekend");
+    }
+
+    const number = document.createElement("span");
+    number.className = "day-number";
+    number.textContent = day;
+    cell.appendChild(number);
+
+    const exception = getExceptionForDate(user, dateKey);
+
+    if (exception) {
+      cell.classList.add(
+        "unit-off-day",
+        `unit-off-${exception.type.toLowerCase().replaceAll(" ", "-")}`
+      );
+
+      const off = document.createElement("span");
+      off.className = "unit-calendar-note off-note";
+      off.textContent = exception.label || exception.type;
+      cell.appendChild(off);
+    }
+
+    classUnits.forEach(unit => {
+      unit.lessons
+        .filter(lesson => lesson.dateKey === dateKey)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+        .forEach(lesson => {
+          const colour = normalizeHexColour(unit.colour) || "#8C6CFF";
+          const lessonButton = document.createElement("button");
+
+          lessonButton.type = "button";
+          lessonButton.className = "workspace-unit-lesson";
+          lessonButton.classList.toggle("current-unit", unit.id === currentUnit.id);
+          lessonButton.style.setProperty("--workspace-unit-colour", colour);
+          lessonButton.style.setProperty("--workspace-unit-colour-soft", hexToRgba(colour, 0.2));
+
+          const unitName = document.createElement("small");
+          unitName.textContent = unit.name;
+
+          const lessonTitle = document.createElement("strong");
+          lessonTitle.textContent = lessonDisplayTitle(lesson);
+
+          lessonButton.append(unitName, lessonTitle);
+
+          lessonButton.addEventListener("click", event => {
+            event.stopPropagation();
+            openLessonPlaceholder(unit.id, lesson.id);
+          });
+
+          cell.appendChild(lessonButton);
+        });
+    });
+
+    grid.appendChild(cell);
+  }
+
+  classUnits.forEach(unit => {
+    const item = document.createElement("span");
+    item.className = "workspace-unit-legend-item";
+
+    const swatch = document.createElement("i");
+    swatch.style.background = normalizeHexColour(unit.colour) || "#8C6CFF";
+
+    const text = document.createElement("span");
+    text.textContent = unit.name;
+
+    item.append(swatch, text);
+
+    if (unit.id === currentUnit.id) {
+      item.classList.add("current");
+    }
+
+    legend.appendChild(item);
+  });
+}
+
+function renderUnitWorkspacePanel(unit, section) {
+  const heading = $("unitWorkspacePanelHeading");
+  const content = $("unitWorkspacePanelContent");
+
+  const labels = {
+    curriculum: "Curriculum",
+    simulation: "Simulation",
+    project: "Project",
+    assessments: "Assessments",
+    resources: "Resources",
+    fieldTrips: "Field Trips",
+    lessons: "Lessons",
+    numeracy: "Numeracy",
+    literacy: "Literacy",
+    learningModalities: "Learning Modalities",
+    indigenousVoices: "Indigenous Voices",
+    cognitiveTempo: "Cognitive Tempo"
+  };
+
+  heading.textContent = labels[section] || "Unit";
+  content.innerHTML = "";
+
+  if (section === "curriculum") {
+    renderUnitWorkspaceCurriculum(unit, content);
+    return;
+  }
+
+  if (section === "lessons") {
+    renderUnitWorkspaceLessons(unit, content);
+    return;
+  }
+
+  const empty = document.createElement("div");
+  empty.className = "workspace-section-empty";
+
+  const title = document.createElement("strong");
+  title.textContent = `${labels[section] || "This section"} is ready for its next build.`;
+
+  const copy = document.createElement("p");
+  copy.textContent =
+    "The Unit Workspace and autosave foundation are in place. " +
+    "Content for this section will be added without changing the unit/calendar structure you are testing now.";
+
+  empty.append(title, copy);
+  content.appendChild(empty);
+}
+
+function renderUnitWorkspaceCurriculum(unit, container) {
+  const links = unit.curriculumLinks || {
+    working: unit.selectedCurriculum || [],
+    prerequisite: [],
+    lookingAhead: [],
+    crossCurricular: []
+  };
+
+  const cards = document.createElement("div");
+  cards.className = "workspace-curriculum-cards";
+
+  [
+    {
+      key: "prerequisite",
+      title: "Prerequisite Curriculum",
+      subtitle: "Previous-grade curriculum kept separate from lesson objectives."
+    },
+    {
+      key: "working",
+      title: "Working Curriculum",
+      subtitle: "The curriculum this unit is actively teaching."
+    },
+    {
+      key: "lookingAhead",
+      title: "Looking Ahead",
+      subtitle: "Next-grade curriculum kept separate from current objectives."
+    },
+    {
+      key: "crossCurricular",
+      title: "Cross-Curricular Connections",
+      subtitle: "Connections that remain distinct from Working Curriculum."
+    }
+  ].forEach(item => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "workspace-curriculum-card";
+
+    const count = Array.isArray(links[item.key]) ? links[item.key].length : 0;
+
+    card.innerHTML =
+      `<span class="workspace-curriculum-card-copy">` +
+        `<strong>${escapeHTML(item.title)}</strong>` +
+        `<small>${escapeHTML(item.subtitle)}</small>` +
+      `</span>` +
+      `<span class="workspace-curriculum-count">${count}</span>`;
+
+    if (item.key === "working" && !readOnlyMode) {
+      card.addEventListener("click", () => {
+        unitDetailDialog.close();
+        openUnitWizard(unit.id, 2);
+      });
+    } else {
+      card.classList.add("workspace-card-preview-only");
+    }
+
+    cards.appendChild(card);
+  });
+
+  container.appendChild(cards);
+
+  const working = links.working || [];
+
+  const heading = document.createElement("div");
+  heading.className = "workspace-subheading";
+  heading.innerHTML =
+    `<div><p class="small-label">Working Curriculum</p>` +
+    `<h4>${working.length} selected item${working.length === 1 ? "" : "s"}</h4></div>`;
+
+  if (!readOnlyMode) {
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "secondary-button";
+    edit.textContent = "Edit Working Curriculum";
+    edit.addEventListener("click", () => {
+      unitDetailDialog.close();
+      openUnitWizard(unit.id, 2);
+    });
+    heading.appendChild(edit);
+  }
+
+  container.appendChild(heading);
+
+  if (!working.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "No working curriculum has been selected yet.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "workspace-working-curriculum-list";
+
+  working.forEach(record => {
+    const item = document.createElement("article");
+    item.className = "workspace-curriculum-objective";
+
+    const path = document.createElement("small");
+    path.className = "workspace-curriculum-path";
+    path.textContent =
+      `${record.grade} · ${record.organizingIdea} · ${record.type}`;
+
+    const text = makeCurriculumText(record, getActiveUser());
+    item.append(path, text);
+    list.appendChild(item);
+  });
+
+  container.appendChild(list);
+}
+
+function renderUnitWorkspaceLessons(unit, container) {
+  const intro = document.createElement("p");
+  intro.className = "section-subtitle";
+  intro.textContent =
+    "Lesson records are already stable and selectable. " +
+    "The full living Lesson Planner will attach to these records in the lesson-system release.";
+
+  container.appendChild(intro);
+
+  const list = document.createElement("div");
+  list.className = "unit-lesson-list";
+
   if (!unit.lessons.length) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "This unit is currently saved as a draft without lesson placeholders.";
-    lessonList.appendChild(empty);
+    empty.textContent = "This unit does not have lesson placeholders yet.";
+    list.appendChild(empty);
   } else {
     unit.lessons.forEach(lesson => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "unit-lesson-button";
-      button.innerHTML = `<strong>${escapeHTML(lessonDisplayTitle(lesson))}</strong><span>${escapeHTML(formatLongDate(lesson.dateKey))}</span><small>${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))} · ${escapeHTML(hoursLabel(lesson.durationMinutes))} · Lesson plan not built</small>`;
+
+      button.innerHTML =
+        `<strong>${escapeHTML(lessonDisplayTitle(lesson))}</strong>` +
+        `<span>${escapeHTML(formatLongDate(lesson.dateKey))}</span>` +
+        `<small>${escapeHTML(formatTime(lesson.startTime))}–${escapeHTML(formatTime(lesson.endTime))} · ` +
+        `${escapeHTML(hoursLabel(lesson.durationMinutes))}</small>`;
+
       button.addEventListener("click", () => openLessonPlaceholder(unit.id, lesson.id));
-      lessonList.appendChild(button);
+      list.appendChild(button);
     });
   }
-  unitDetailDialog.showModal();
+
+  container.appendChild(list);
 }
 
 function openLessonPlaceholder(unitId, lessonId) {

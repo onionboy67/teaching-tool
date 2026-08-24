@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Teacher HQ</title>
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
 </head>
 <body>
 
@@ -342,11 +342,7 @@
               </label>
               <label class="form-field">
                 <span>Location <small>(optional)</small></span>
-                <div class="location-search-row">
-                  <input id="pdLocation" type="text" placeholder="School, district office, conference centre..." />
-                  <button id="searchPDLocationButton" type="button" class="secondary-button">Search Google Maps</button>
-                </div>
-                <small>The map search opens in a new tab; Teacher HQ does not send or store a Maps API key.</small>
+                <input id="pdLocation" type="text" placeholder="School, district office, conference centre..." />
               </label>
             </div>
 
@@ -410,16 +406,39 @@
       </section>
 
       <section id="unitStep2" class="wizard-step hidden">
-        <div class="section-heading-row"><div><h3>Select Curriculum</h3><p class="section-subtitle">Select as much or as little as you want. You can always add curriculum later.</p></div><button id="clearCurriculumSelectionButton" type="button" class="text-button">Clear Selection</button></div>
+        <div class="section-heading-row">
+          <div>
+            <h3>Select Curriculum</h3>
+            <p class="section-subtitle">Expand any branch without changing its selections. Select or clear curriculum at any level.</p>
+          </div>
+          <div class="section-action-row">
+            <button id="selectAllCurriculumButton" type="button" class="secondary-button">Select All</button>
+            <button id="clearCurriculumSelectionButton" type="button" class="secondary-button">Clear All</button>
+          </div>
+        </div>
         <div id="curriculumBrowser" class="curriculum-browser"></div>
         <p id="curriculumEmptyMessage" class="empty-state hidden">No curriculum has been loaded for this grade/subject yet. Continue now and add it later.</p>
       </section>
 
       <section id="unitStep3" class="wizard-step hidden">
         <h3>How much instructional time does this unit get?</h3>
-        <p class="section-subtitle">Hours are the base unit. Manual decimal inputs may use .25 (15 min) or .5 (30 min).</p>
+        <p class="section-subtitle">Enter time naturally. Teacher HQ stores it in 15-minute increments for scheduling.</p>
         <div class="allocation-grid">
-          <label class="form-field"><span>Hours Allocated to Unit</span><input id="unitHoursInput" type="number" min="0" step="0.25" placeholder="20.5" /><small>.25 = 15 minutes · .5 = 30 minutes</small></label>
+          <div class="form-field">
+            <span>Time Allocated to Unit</span>
+            <div class="hours-minutes-input">
+              <label><span>Hours</span><input id="unitHoursWholeInput" type="number" min="0" step="1" inputmode="numeric" placeholder="20" /></label>
+              <label><span>Minutes</span>
+                <select id="unitMinutesSelect">
+                  <option value="0">0 min</option>
+                  <option value="15">15 min</option>
+                  <option value="30">30 min</option>
+                  <option value="45">45 min</option>
+                </select>
+              </label>
+            </div>
+            <small>15 min = .25 hr · 30 min = .5 hr · 45 min = .75 hr</small>
+          </div>
           <div class="allocation-or">or</div>
           <label class="form-field"><span>Percentage of Available Instructional Time</span><input id="unitPercentageInput" type="number" min="0" max="100" step="0.1" placeholder="20" /><small id="availableHoursText">Available instructional time will be calculated from the master calendar.</small></label>
         </div>
@@ -454,7 +473,7 @@
         <div class="unit-calendar-legend">
           <span><i class="legend-dot legend-available"></i> Class available</span>
           <span><i class="legend-dot legend-off"></i> Day off / PD</span>
-          <span><i class="legend-dot legend-purple"></i> Used by another unit</span>
+          <span><i class="legend-dot legend-purple"></i> Other units in this class</span>
           <span id="unitColourLegend" class="hidden"><i id="unitColourLegendSwatch" class="legend-dot"></i> This unit</span>
         </div>
         <div id="unitScheduleSummary" class="selection-summary hidden"></div>
@@ -464,12 +483,65 @@
     </div>
   </dialog>
 
-  <dialog id="unitDetailDialog" class="modal extra-large-modal">
-    <div class="modal-content">
-      <div class="modal-heading"><div><h2 id="unitDetailHeading">Unit</h2><p id="unitDetailMeta" class="section-subtitle"></p></div><button id="closeUnitDetailButton" type="button" class="close-button" aria-label="Close">×</button></div>
-      <div id="unitDetailStats" class="unit-detail-stats"></div>
-      <section><div class="section-heading-row"><div><h3>Curriculum</h3></div><button id="editUnitButton" type="button" class="secondary-button edit-only">Edit Unit</button></div><div id="unitDetailCurriculum" class="curriculum-summary-list"></div></section>
-      <section class="section"><h3>Lesson Placeholders</h3><p class="section-subtitle">These are the bedrock of lesson planning. Select any lesson to open its future lesson-planning entry point.</p><div id="unitLessonList" class="unit-lesson-list"></div></section>
+  <dialog id="unitDetailDialog" class="modal workspace-modal">
+    <div class="modal-content unit-workspace-content">
+      <header class="unit-workspace-header">
+        <div class="unit-workspace-title-area">
+          <button id="unitWorkspaceTitleButton" type="button" class="unit-workspace-title edit-only" title="Click to rename this unit">Unit</button>
+          <input id="unitWorkspaceTitleInput" class="unit-workspace-title-input hidden edit-only" type="text" maxlength="100" />
+          <h2 id="unitDetailHeading" class="read-only-unit-title">Unit</h2>
+          <p id="unitDetailMeta" class="section-subtitle"></p>
+
+          <div class="unit-workspace-meta-actions">
+            <button id="unitWorkspaceClassButton" type="button" class="workspace-meta-chip edit-only" title="Edit grade / subject"></button>
+            <button id="unitWorkspaceDateButton" type="button" class="workspace-meta-chip edit-only" title="Edit start date and unit colour"></button>
+            <button id="unitWorkspaceTimeButton" type="button" class="workspace-meta-chip edit-only" title="Edit allocated instructional time"></button>
+            <button id="unitWorkspaceColourButton" type="button" class="workspace-colour-chip edit-only" title="Edit unit colour"><span id="unitWorkspaceColourSwatch"></span> Colour</button>
+          </div>
+        </div>
+        <button id="closeUnitDetailButton" type="button" class="close-button" aria-label="Close">×</button>
+      </header>
+
+      <nav id="unitWorkspaceNav" class="unit-workspace-nav" aria-label="Unit workspace sections">
+        <button type="button" data-unit-section="curriculum">Curriculum</button>
+        <button type="button" data-unit-section="simulation">Simulation</button>
+        <button type="button" data-unit-section="project">Project</button>
+        <button type="button" data-unit-section="assessments">Assessments</button>
+        <button type="button" data-unit-section="resources">Resources</button>
+        <button type="button" data-unit-section="fieldTrips">Field Trips</button>
+        <button type="button" data-unit-section="lessons">Lessons</button>
+        <button type="button" data-unit-section="numeracy">Numeracy</button>
+        <button type="button" data-unit-section="literacy">Literacy</button>
+        <button type="button" data-unit-section="learningModalities">Learning Modalities</button>
+        <button type="button" data-unit-section="indigenousVoices">Indigenous Voices</button>
+        <button type="button" data-unit-section="cognitiveTempo">Cognitive Tempo</button>
+      </nav>
+
+      <section id="unitWorkspaceCalendarView" class="unit-workspace-calendar-view">
+        <div class="section-heading-row workspace-calendar-heading">
+          <div>
+            <p class="small-label">Grade / Subject Calendar</p>
+            <h3 id="unitWorkspaceMonthTitle"></h3>
+          </div>
+          <div class="calendar-controls">
+            <button id="unitWorkspacePreviousMonth" type="button" class="icon-button" aria-label="Previous month">←</button>
+            <button id="unitWorkspaceNextMonth" type="button" class="icon-button" aria-label="Next month">→</button>
+          </div>
+        </div>
+        <div id="unitWorkspaceCalendarGrid" class="calendar-grid unit-workspace-calendar-grid"></div>
+        <div id="unitWorkspaceCalendarLegend" class="unit-workspace-calendar-legend"></div>
+      </section>
+
+      <section id="unitWorkspacePanel" class="unit-workspace-panel hidden">
+        <div class="unit-workspace-panel-heading">
+          <button id="unitWorkspaceBackToCalendar" type="button" class="text-button">← Back to Calendar</button>
+          <div>
+            <p class="small-label">Unit Workspace</p>
+            <h3 id="unitWorkspacePanelHeading"></h3>
+          </div>
+        </div>
+        <div id="unitWorkspacePanelContent"></div>
+      </section>
     </div>
   </dialog>
 
@@ -483,6 +555,7 @@
   </dialog>
 
   <script src="curriculum-data.js?v=2"></script>
-  <script src="app.js?v=5"></script>
+  <script src="bloom-data.js?v=1"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
