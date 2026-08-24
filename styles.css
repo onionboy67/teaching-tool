@@ -3846,3 +3846,72 @@ input[type="date"] {
   .three-point-objective-preview { margin-left: 0; }
   .assessment-history-item { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* ============================================================
+   SCIENCE 7–9 CURRICULUM ADAPTATION
+============================================================ */
+.science-unit-context-preview {
+  margin: 10px 14px 14px 42px;
+  border: 1px solid rgba(41, 92, 52, 0.14);
+  border-radius: 16px;
+  background: rgba(238, 248, 239, 0.72);
+  overflow: hidden;
+}
+
+.science-unit-context-preview > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.science-unit-context-preview > summary::-webkit-details-marker { display: none; }
+.science-unit-context-preview > summary strong { font-size: 0.9rem; }
+.science-unit-context-preview > summary span { color: var(--muted); font-size: 0.78rem; }
+
+.science-unit-context-body {
+  padding: 0 14px 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.science-unit-context-body section {
+  padding: 11px 12px;
+  border-radius: 13px;
+  background: rgba(255,255,255,0.76);
+}
+
+.science-unit-context-body section > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #3f6f49;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.science-unit-context-body p { margin: 0; line-height: 1.5; }
+.science-key-concepts { display: flex; flex-wrap: wrap; gap: 6px; }
+.science-key-concepts b {
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgba(41, 92, 52, 0.14);
+  font-size: 0.78rem;
+}
+
+.curriculum-summative-priority {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #fff1d7;
+  color: #845500;
+  font-size: 0.72rem;
+  font-weight: 800;
+}

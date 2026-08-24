@@ -9,10 +9,10 @@ const LEGACY_STORAGE_KEYS = ["teacherHQData_v7", "teacherHQData_v6", "teacherHQD
 
 const DEFAULT_GRADES = [
   "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
-  "Grade 5", "Grade 6", "Grade 7", "Grade 8"
+  "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9"
 ];
 
-const DEFAULT_SUBJECTS = ["ELA", "Math", "Second Step", "Fine Arts"];
+const DEFAULT_SUBJECTS = ["ELA", "Math", "Science", "Second Step", "Fine Arts"];
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const FUN_UNIT_COLOURS = [
   "#FF5F8F", "#8C6CFF", "#33C7FF", "#39D98A", "#FFB347", "#F04FCB",
@@ -21,6 +21,10 @@ const FUN_UNIT_COLOURS = [
 ];
 const CURRICULUM = Array.isArray(window.TEACHER_HQ_CURRICULUM)
   ? window.TEACHER_HQ_CURRICULUM
+  : [];
+
+const CURRICULUM_CONTEXTS = Array.isArray(window.TEACHER_HQ_CURRICULUM_CONTEXTS)
+  ? window.TEACHER_HQ_CURRICULUM_CONTEXTS
   : [];
 
 const BLOOM_REFERENCE = window.TEACHER_HQ_BLOOM && typeof window.TEACHER_HQ_BLOOM === "object"
@@ -2954,8 +2958,85 @@ function makeCurriculumText(record, user) {
     meta.appendChild(note);
   }
 
+  if (record.assessmentEmphasis === "summative") {
+    const priority = document.createElement("span");
+    priority.className = "curriculum-summative-priority";
+    priority.textContent = "Summative priority";
+    meta.appendChild(priority);
+  }
+
   wrapper.appendChild(meta);
   return wrapper;
+}
+
+
+function isScience79Curriculum(recordsOrRecord) {
+  const records = Array.isArray(recordsOrRecord) ? recordsOrRecord : [recordsOrRecord];
+  return records.some(record => record?.curriculumFormat === "science-7-9");
+}
+
+function curriculumBranchLabels(records) {
+  if (isScience79Curriculum(records)) {
+    return {
+      organizingIdea: "Unit",
+      guidingQuestion: "Outcome Category",
+      learningOutcome: "General Outcome / Skill Area"
+    };
+  }
+
+  return {
+    organizingIdea: "Organizing Idea",
+    guidingQuestion: "Guiding Question",
+    learningOutcome: "Learning Outcome"
+  };
+}
+
+function curriculumTypeDisplayLabel(typeRecords, fallbackType) {
+  if (!isScience79Curriculum(typeRecords)) return fallbackType;
+
+  const category = typeRecords[0]?.officialOutcomeCategory || fallbackType;
+  if (category === "STS & Knowledge") return "STS & Knowledge — Summative Priority";
+  return category;
+}
+
+function scienceContextForRecords(records) {
+  const contextId = (records || []).find(record => record?.contextId)?.contextId;
+  return CURRICULUM_CONTEXTS.find(item => item.id === contextId) || null;
+}
+
+function makeScienceUnitContextPreview(records) {
+  const context = scienceContextForRecords(records);
+  if (!context) return null;
+
+  const details = document.createElement("details");
+  details.className = "science-unit-context-preview";
+
+  const summary = document.createElement("summary");
+  summary.innerHTML =
+    `<strong>Unit context</strong>` +
+    `<span>Overview · Focusing Questions · Key Concepts</span>`;
+  details.appendChild(summary);
+
+  const body = document.createElement("div");
+  body.className = "science-unit-context-body";
+
+  if (context.overview) {
+    body.insertAdjacentHTML("beforeend",
+      `<section><span>Overview</span><p>${escapeHTML(context.overview)}</p></section>`);
+  }
+
+  if (context.focusingQuestions) {
+    body.insertAdjacentHTML("beforeend",
+      `<section><span>Focusing Questions</span><p>${escapeHTML(context.focusingQuestions)}</p></section>`);
+  }
+
+  if (Array.isArray(context.keyConcepts) && context.keyConcepts.length) {
+    body.insertAdjacentHTML("beforeend",
+      `<section><span>Key Concepts</span><div class="science-key-concepts">${context.keyConcepts.map(item => `<b>${escapeHTML(item)}</b>`).join("")}</div></section>`);
+  }
+
+  details.appendChild(body);
+  return details;
 }
 
 function captureCurriculumOpenState() {
@@ -3042,11 +3123,15 @@ function renderCurriculumBrowser(openState = null) {
 
       const text = document.createElement("div");
       text.className = "curriculum-card-title";
-      text.innerHTML = `<strong>${escapeHTML(oi)}</strong><small>${escapeHTML(description)}</small>`;
+      const branchLabels = curriculumBranchLabels(oiRecords);
+      text.innerHTML = `<span class="curriculum-level-label">${escapeHTML(branchLabels.organizingIdea)}</span><strong>${escapeHTML(oi)}</strong><small>${escapeHTML(description)}</small>`;
 
       oiMain.append(chevron, text);
       oiSummary.append(oiMain, makeCurriculumSelectionControls(oiRecords));
       section.appendChild(oiSummary);
+
+      const scienceContextPreview = makeScienceUnitContextPreview(oiRecords);
+      if (scienceContextPreview) section.appendChild(scienceContextPreview);
 
       const byGQ = groupBy(oiRecords, record => record.guidingQuestion || "Guiding Question");
 
@@ -3068,7 +3153,8 @@ function renderCurriculumBrowser(openState = null) {
 
         const gqText = document.createElement("div");
         gqText.className = "curriculum-card-title";
-        gqText.innerHTML = `<span class="curriculum-level-label">Guiding Question</span><strong>${escapeHTML(gq)}</strong>`;
+        const gqLabels = curriculumBranchLabels(gqRecords);
+        gqText.innerHTML = `<span class="curriculum-level-label">${escapeHTML(gqLabels.guidingQuestion)}</span><strong>${escapeHTML(gq)}</strong>`;
 
         gqMain.append(chevron, gqText);
         gqSummary.append(gqMain, makeCurriculumSelectionControls(gqRecords));
@@ -3094,7 +3180,8 @@ function renderCurriculumBrowser(openState = null) {
 
           const loText = document.createElement("div");
           loText.className = "curriculum-card-title";
-          loText.innerHTML = `<span class="curriculum-level-label">Learning Outcome</span><strong>${escapeHTML(lo)}</strong>`;
+          const loLabels = curriculumBranchLabels(loRecords);
+          loText.innerHTML = `<span class="curriculum-level-label">${escapeHTML(loLabels.learningOutcome)}</span><strong>${escapeHTML(lo)}</strong>`;
 
           loMain.append(chevron, loText);
           loSummary.append(loMain, makeCurriculumSelectionControls(loRecords));
@@ -3114,7 +3201,7 @@ function renderCurriculumBrowser(openState = null) {
             headingWrap.className = "curriculum-type-heading";
 
             const heading = document.createElement("strong");
-            heading.textContent = type;
+            heading.textContent = curriculumTypeDisplayLabel(typeRecords, type);
 
             const count = document.createElement("span");
             count.className = "curriculum-type-count";
@@ -4526,11 +4613,15 @@ function renderWorkspaceCurriculumPicker(unit, relation, container) {
       const oiSummary = document.createElement("summary");
       const oiMain = document.createElement("div");
       oiMain.className = "curriculum-summary-main";
+      const workspaceLabels = curriculumBranchLabels(oiRecords);
       oiMain.innerHTML =
         `<span class="curriculum-chevron" aria-hidden="true"></span>` +
-        `<div class="curriculum-card-title"><strong>${escapeHTML(oi)}</strong><small>${escapeHTML(oiDescription)}</small></div>`;
+        `<div class="curriculum-card-title"><span class="curriculum-level-label">${escapeHTML(workspaceLabels.organizingIdea)}</span><strong>${escapeHTML(oi)}</strong><small>${escapeHTML(oiDescription)}</small></div>`;
       oiSummary.append(oiMain, makeControls(oiRecords));
       oiSection.appendChild(oiSummary);
+
+      const scienceContextPreview = makeScienceUnitContextPreview(oiRecords);
+      if (scienceContextPreview) oiSection.appendChild(scienceContextPreview);
 
       const byGQ = groupBy(oiRecords, record => record.guidingQuestion || "Guiding Question");
       Object.entries(byGQ).forEach(([gq, gqRecords]) => {
@@ -4540,9 +4631,10 @@ function renderWorkspaceCurriculumPicker(unit, relation, container) {
         const gqSummary = document.createElement("summary");
         const gqMain = document.createElement("div");
         gqMain.className = "curriculum-summary-main";
+        const workspaceGqLabels = curriculumBranchLabels(gqRecords);
         gqMain.innerHTML =
           `<span class="curriculum-chevron" aria-hidden="true"></span>` +
-          `<div class="curriculum-card-title"><span class="curriculum-level-label">Guiding Question</span><strong>${escapeHTML(gq)}</strong></div>`;
+          `<div class="curriculum-card-title"><span class="curriculum-level-label">${escapeHTML(workspaceGqLabels.guidingQuestion)}</span><strong>${escapeHTML(gq)}</strong></div>`;
         gqSummary.append(gqMain, makeControls(gqRecords));
         gqSection.appendChild(gqSummary);
 
@@ -4554,9 +4646,10 @@ function renderWorkspaceCurriculumPicker(unit, relation, container) {
           const loSummary = document.createElement("summary");
           const loMain = document.createElement("div");
           loMain.className = "curriculum-summary-main";
+          const workspaceLoLabels = curriculumBranchLabels(loRecords);
           loMain.innerHTML =
             `<span class="curriculum-chevron" aria-hidden="true"></span>` +
-            `<div class="curriculum-card-title"><span class="curriculum-level-label">Learning Outcome</span><strong>${escapeHTML(lo)}</strong></div>`;
+            `<div class="curriculum-card-title"><span class="curriculum-level-label">${escapeHTML(workspaceLoLabels.learningOutcome)}</span><strong>${escapeHTML(lo)}</strong></div>`;
           loSummary.append(loMain, makeControls(loRecords));
           loSection.appendChild(loSummary);
 
@@ -4569,7 +4662,7 @@ function renderWorkspaceCurriculumPicker(unit, relation, container) {
 
             const typeHeader = document.createElement("div");
             typeHeader.className = "curriculum-type-header";
-            typeHeader.innerHTML = `<div class="curriculum-type-heading"><strong>${escapeHTML(type)}</strong><span class="curriculum-type-count">${typeRecords.length} item${typeRecords.length === 1 ? "" : "s"}</span></div>`;
+            typeHeader.innerHTML = `<div class="curriculum-type-heading"><strong>${escapeHTML(curriculumTypeDisplayLabel(typeRecords, type))}</strong><span class="curriculum-type-count">${typeRecords.length} item${typeRecords.length === 1 ? "" : "s"}</span></div>`;
             typeHeader.appendChild(makeControls(typeRecords));
             box.appendChild(typeHeader);
 

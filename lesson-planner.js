@@ -38,6 +38,10 @@
     6: { bg: "#17171A", fg: "#FFFFFF", label: "Create" }
   };
 
+  const CURRICULUM_CONTEXTS = Array.isArray(window.TEACHER_HQ_CURRICULUM_CONTEXTS)
+    ? window.TEACHER_HQ_CURRICULUM_CONTEXTS
+    : [];
+
   let lessonPlannerDialog = null;
   let currentLessonUnitId = null;
   let currentLessonId = null;
@@ -81,6 +85,7 @@
         priorIds: [],
         todayIds: [],
         lookingAheadIds: [],
+        contextIds: [],
         numeracyIds: [],
         literacyIds: []
       },
@@ -159,6 +164,7 @@
         priorIds: unique(curriculum.priorIds),
         todayIds: unique(curriculum.todayIds),
         lookingAheadIds: unique(curriculum.lookingAheadIds),
+        contextIds: unique(curriculum.contextIds),
         numeracyIds: unique(curriculum.numeracyIds),
         literacyIds: unique(curriculum.literacyIds)
       },
@@ -239,6 +245,7 @@
     result.curriculum.priorIds = mergeFallback(plan.curriculum.priorIds, inherited.curriculum?.priorIds);
     result.curriculum.todayIds = mergeFallback(plan.curriculum.todayIds, inherited.curriculum?.todayIds);
     result.curriculum.lookingAheadIds = mergeFallback(plan.curriculum.lookingAheadIds, inherited.curriculum?.lookingAheadIds);
+    result.curriculum.contextIds = mergeFallback(plan.curriculum.contextIds, inherited.curriculum?.contextIds);
     result.objectives.iCan = mergeFallback(plan.objectives.iCan, inherited.objectives?.iCan) || "";
     result.objectives.studentsWill = mergeFallback(plan.objectives.studentsWill, inherited.objectives?.studentsWill) || "";
     result.assessments.links = mergeFallback(plan.assessments.links, inherited.assessments?.links);
@@ -563,6 +570,129 @@
     return grades;
   }
 
+
+  function isScience79LessonRecords(records) {
+    return (records || []).some(record => record?.curriculumFormat === "science-7-9");
+  }
+
+  function science79BranchLabels(records) {
+    return isScience79LessonRecords(records)
+      ? { gq: "Outcome Category", lo: "General Outcome / Skill Area" }
+      : { gq: "Guiding Question", lo: "Learning Outcome" };
+  }
+
+  function splitFocusingQuestions(text) {
+    const matches = String(text || "").match(/[^?]+\?/g);
+    return matches ? matches.map(item => item.trim()) : (text ? [String(text).trim()] : []);
+  }
+
+  function scienceContextItemsForUnit(unit) {
+    const contextIds = unique((unit.curriculumLinks?.working || []).map(record => record.contextId));
+    const items = [];
+
+    CURRICULUM_CONTEXTS
+      .filter(context => contextIds.includes(context.id))
+      .forEach(context => {
+        if (context.overview) {
+          items.push({
+            id: `${context.id}::overview`,
+            contextId: context.id,
+            unit: context.unit,
+            kind: "Unit Overview",
+            text: context.overview
+          });
+        }
+
+        splitFocusingQuestions(context.focusingQuestions).forEach((question, index) => {
+          items.push({
+            id: `${context.id}::focus-${index + 1}`,
+            contextId: context.id,
+            unit: context.unit,
+            kind: "Focusing Question",
+            text: question
+          });
+        });
+
+        (context.keyConcepts || []).forEach((concept, index) => {
+          items.push({
+            id: `${context.id}::concept-${index + 1}`,
+            contextId: context.id,
+            unit: context.unit,
+            kind: "Key Concept",
+            text: concept
+          });
+        });
+      });
+
+    return items;
+  }
+
+  function scienceContextPicker(unit, selectedIds, onChange) {
+    const wrap = document.createElement("div");
+    wrap.className = "lesson-science-context";
+    wrap.innerHTML =
+      `<div class="lesson-curriculum-pool-heading">` +
+      `<div><span>Science Unit Context</span><small>Grade 7–9 unit overview, focusing questions, and key concepts. Select anything you want visible in this Lesson Plan.</small></div>` +
+      `<strong>${selectedIds.size} selected</strong></div>`;
+
+    const items = scienceContextItemsForUnit(unit);
+    if (!items.length) {
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "No Grade 7–9 Science unit context is available for the Working Curriculum selected in this Unit.";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    const byUnit = new Map();
+    items.forEach(item => {
+      if (!byUnit.has(item.unit)) byUnit.set(item.unit, []);
+      byUnit.get(item.unit).push(item);
+    });
+
+    byUnit.forEach((unitItems, unitName) => {
+      const unitCard = document.createElement("section");
+      unitCard.className = "lesson-science-context-unit";
+      unitCard.innerHTML = `<h4>${escapeHTML(unitName)}</h4>`;
+
+      ["Unit Overview", "Focusing Question", "Key Concept"].forEach(kind => {
+        const kindItems = unitItems.filter(item => item.kind === kind);
+        if (!kindItems.length) return;
+
+        const group = document.createElement("div");
+        group.className = "lesson-science-context-group";
+        group.innerHTML = `<strong>${escapeHTML(kind)}${kindItems.length === 1 ? "" : "s"}</strong>`;
+
+        kindItems.forEach(item => {
+          const label = document.createElement("label");
+          label.className = "lesson-science-context-item";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = selectedIds.has(item.id);
+          checkbox.disabled = readOnlyMode;
+          const text = document.createElement("span");
+          text.textContent = item.text;
+          label.append(checkbox, text);
+
+          checkbox.addEventListener("change", () => {
+            if (checkbox.checked) selectedIds.add(item.id);
+            else selectedIds.delete(item.id);
+            onChange([...selectedIds]);
+            lp$(".lesson-curriculum-pool-heading strong", wrap).textContent = `${selectedIds.size} selected`;
+          });
+
+          group.appendChild(label);
+        });
+
+        unitCard.appendChild(group);
+      });
+
+      wrap.appendChild(unitCard);
+    });
+
+    return wrap;
+  }
+
   function curriculumPickerCard({ title, subtitle, records, selectedIds, prominent = false, onChange, emptyText }) {
     const wrap = document.createElement("div");
     wrap.className = `lesson-curriculum-pool ${prominent ? "prominent" : "subdued"}`;
@@ -588,11 +718,14 @@
         gqMap.forEach((loMap, gq) => {
           const gqCard = document.createElement("div");
           gqCard.className = "lesson-curriculum-branch guiding-question";
-          gqCard.innerHTML = `<div class="branch-label"><span>Guiding Question</span><strong>${escapeHTML(gq)}</strong></div>`;
+          const branchRecords = [...loMap.values()].flat();
+          const branchLabels = science79BranchLabels(branchRecords);
+          gqCard.innerHTML = `<div class="branch-label"><span>${escapeHTML(branchLabels.gq)}</span><strong>${escapeHTML(gq)}</strong></div>`;
           loMap.forEach((items, lo) => {
             const loCard = document.createElement("div");
             loCard.className = "lesson-curriculum-branch learning-outcome";
-            loCard.innerHTML = `<div class="branch-label"><span>Learning Outcome</span><strong>${escapeHTML(lo)}</strong></div>`;
+            const itemLabels = science79BranchLabels(items);
+            loCard.innerHTML = `<div class="branch-label"><span>${escapeHTML(itemLabels.lo)}</span><strong>${escapeHTML(lo)}</strong></div>`;
             const list = document.createElement("div");
             list.className = "lesson-curriculum-statements";
             items.forEach(record => {
@@ -604,7 +737,9 @@
               checkbox.disabled = readOnlyMode;
               const copy = document.createElement("div");
               const type = document.createElement("small");
-              type.textContent = record.type;
+              type.textContent = record.officialOutcomeCategory
+                ? `${record.officialOutcomeCategory}${record.assessmentEmphasis === "summative" ? " · Summative priority" : ""}`
+                : record.type;
               const text = document.createElement("p");
               if (record.type === "Skills & Procedures") {
                 const analysis = analyzeCurriculumVerb(record.text);
@@ -646,6 +781,18 @@
     const priorSelected = new Set(plan.curriculum.priorIds);
     const todaySelected = new Set(plan.curriculum.todayIds);
     const aheadSelected = new Set(plan.curriculum.lookingAheadIds);
+    const contextSelected = new Set(plan.curriculum.contextIds || []);
+
+    if (scienceContextItemsForUnit(unit).length) {
+      section.appendChild(scienceContextPicker(
+        unit,
+        contextSelected,
+        ids => {
+          plan.curriculum.contextIds = ids;
+          scheduleLessonSave(unit, plan, lesson);
+        }
+      ));
+    }
 
     section.appendChild(curriculumPickerCard({
       title: "Prior Curriculum",
@@ -1549,6 +1696,15 @@
     return (records || []).filter(record => ids.includes(record.id)).map(record => `<div class="print-curriculum-item"><small>${escapePrint(record.type)} · ${escapePrint(record.organizingIdea)}</small><strong>${escapePrint(record.guidingQuestion || "")}</strong><span>${escapePrint(record.learningOutcome || "")}</span><p>${escapePrint(record.text)}</p></div>`).join("");
   }
 
+
+  function printScienceContext(unit, ids) {
+    const selected = new Set(ids || []);
+    return scienceContextItemsForUnit(unit)
+      .filter(item => selected.has(item.id))
+      .map(item => `<div class="print-curriculum-item"><small>Science Unit Context · ${escapePrint(item.unit)}</small><strong>${escapePrint(item.kind)}</strong><p>${escapePrint(item.text)}</p></div>`)
+      .join("");
+  }
+
   function buildLessonPrintHTML(unit, lesson, rawPlan, user) {
     const plan = effectivePlan(rawPlan);
     const assessments = (plan.assessments.links || []).map(link => {
@@ -1565,7 +1721,7 @@
       @page{size:letter;margin:.55in}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17171a;margin:0;font-size:11px;line-height:1.4}.controls{display:flex;justify-content:flex-end;margin-bottom:16px}.controls button{border:0;background:#1d1d1f;color:#fff;border-radius:10px;padding:10px 15px;font-weight:700}h1{font-size:24px;margin:0 0 4px}h2{font-size:15px;margin:20px 0 8px;border-bottom:2px solid #222;padding-bottom:5px}.meta{color:#666;margin-bottom:15px}.objective-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.objective{border:1.5px solid #222;border-radius:10px;padding:10px;font-size:13px}.objective span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:4px}.print-curriculum-item{border-left:3px solid #888;padding:7px 9px;margin:6px 0;background:#f7f7f8}.print-curriculum-item small,.print-curriculum-item span{display:block;color:#666}.print-curriculum-item p{margin:4px 0 0}.agenda-summary{margin:0 0 8px;padding-left:18px}.agenda-summary li{margin:3px 0}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #aaa;padding:6px;vertical-align:top}th{background:#f2f2f3;font-size:9px;text-transform:uppercase}td:nth-child(1){width:5%}td:nth-child(2){width:19%}td:nth-child(3){width:8%}td small{display:block;color:#666}.print-note{padding:7px 9px;background:#f5f5f7;border-radius:8px;margin:5px 0}.print-note p{margin:3px 0}.reflection-box{height:4.8in;border:2px solid #333;border-radius:10px;padding:12px}.reflection-box p{white-space:pre-wrap}.page-break{break-before:page}.completion{margin-top:12px}.muted{color:#777}@media print{.controls{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}tr,.print-curriculum-item,.objective{break-inside:avoid}}</style></head><body><div class="controls"><button onclick="window.print()">Print / Save PDF</button></div>
       <h1>${escapePrint(lessonDisplayTitleForUnit(unit, lesson))}</h1><div class="meta">${escapePrint(classLabel(unit.classSpec))} · ${escapePrint(unit.name)} · ${escapePrint(formatLongDate(lesson.dateKey))} · ${escapePrint(formatTime(lesson.startTime))}–${escapePrint(formatTime(lesson.endTime))} · ${escapePrint(hoursLabel(lesson.durationMinutes))}</div>
       ${plan.general.contextMode === "custom" && plan.general.context ? `<p><strong>Class context:</strong> ${escapePrint(plan.general.context)}</p>` : ""}
-      <h2>Curriculum</h2>${printCurriculum(unit.curriculumLinks?.prerequisite || [], plan.curriculum.priorIds)}${printCurriculum(unit.curriculumLinks?.working || [], plan.curriculum.todayIds)}${printCurriculum(unit.curriculumLinks?.lookingAhead || [], plan.curriculum.lookingAheadIds)}
+      <h2>Curriculum</h2>${printScienceContext(unit, plan.curriculum.contextIds)}${printCurriculum(unit.curriculumLinks?.prerequisite || [], plan.curriculum.priorIds)}${printCurriculum(unit.curriculumLinks?.working || [], plan.curriculum.todayIds)}${printCurriculum(unit.curriculumLinks?.lookingAhead || [], plan.curriculum.lookingAheadIds)}
       <h2>Objectives</h2><div class="objective-grid"><div class="objective"><span>I can…</span>${escapePrint(plan.objectives.iCan || "—")}</div><div class="objective"><span>Students will…</span>${escapePrint(plan.objectives.studentsWill || "—")}</div></div>
       ${assessments ? `<h2>Assessments</h2><ul>${assessments}</ul>` : ""}${observations ? `<h2>Observations</h2><ul>${observations}</ul>` : ""}
       <h2>Agenda</h2><ol class="agenda-summary">${(plan.agenda || []).map(part => `<li>${escapePrint(part.title || agendaTypeLabel(part.type))} — ${part.durationMinutes === .5 ? "30 sec" : `${part.durationMinutes} min`}${part.modalityIds?.length ? ` · ${escapePrint(part.modalityIds.map(id => modalities.get(id)).filter(Boolean).join(", "))}` : ""}</li>`).join("")}</ol><table><thead><tr><th>#</th><th>Part</th><th>Time</th><th>Teacher Does</th><th>Students Do</th></tr></thead><tbody>${agenda}</tbody></table>

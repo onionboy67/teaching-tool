@@ -679,3 +679,42 @@
 .return-to-lesson-bar strong,
 .return-to-lesson-bar span { display: block; }
 .return-to-lesson-bar span { margin-top: 2px; color: #75688d; font-size: 10px; }
+
+/* Science 7–9 unit context */
+.lesson-science-context {
+  margin: 14px 0;
+  border: 1px solid rgba(41, 92, 52, 0.16);
+  border-radius: 20px;
+  padding: 14px;
+  background: rgba(239, 249, 240, 0.78);
+}
+
+.lesson-science-context-unit {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.84);
+}
+
+.lesson-science-context-unit h4 { margin: 0 0 10px; }
+.lesson-science-context-group { display: grid; gap: 7px; margin-top: 10px; }
+.lesson-science-context-group > strong {
+  color: #47734f;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.lesson-science-context-item {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 9px;
+  align-items: start;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.07);
+  line-height: 1.42;
+}
+
+.lesson-science-context-item input { margin-top: 3px; }
