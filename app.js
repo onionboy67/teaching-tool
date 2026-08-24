@@ -108,6 +108,10 @@ const scheduleBlockDialog =
 const scheduleBlockForm =
   document.getElementById("scheduleBlockForm");
 
+const saveScheduleBlockButton =
+  document.getElementById("saveScheduleBlockButton") ||
+  document.getElementById("saveBlockButton");
+
 const instructionalOptions =
   document.getElementById("instructionalOptions");
 
@@ -1667,196 +1671,264 @@ document
    SAVE SCHEDULE BLOCK
 ============================================================ */
 
-scheduleBlockForm.addEventListener(
-  "submit",
-  event => {
+/*
+  blockDay used to be a single select/input. The schedule block
+  dialog now uses blockDayChoices, which contains Sunday–Saturday
+  checkboxes. Keep every save/edit path going through this helper
+  so no code needs the old blockDay element.
+*/
+function getSelectedScheduleDays() {
+  if (!blockDayChoices) {
+    console.error(
+      'Missing #blockDayChoices. The schedule block dialog cannot read selected days.'
+    );
+
+    return [];
+  }
+
+  return Array.from(
+    blockDayChoices.querySelectorAll(
+      'input[type="checkbox"]:checked'
+    )
+  ).map(checkbox => checkbox.value);
+}
+
+function saveScheduleBlock(event) {
+  if (event) {
     event.preventDefault();
+  }
 
-    const selectedDays =
-      Array.from(
-        blockDayChoices.querySelectorAll(
-          'input[type="checkbox"]:checked'
-        )
-      ).map(
-        checkbox => checkbox.value
-      );
+  const selectedDays =
+    getSelectedScheduleDays();
 
-    if (selectedDays.length === 0) {
-      alert(
-        "Please select at least one day."
-      );
-      return;
-    }
+  if (selectedDays.length === 0) {
+    alert(
+      "Please select at least one day."
+    );
+    return;
+  }
 
-    const startTime =
-      document.getElementById(
-        "blockStartTime"
-      ).value;
+  const startTime =
+    document.getElementById(
+      "blockStartTime"
+    ).value;
 
-    const endTime =
-      document.getElementById(
-        "blockEndTime"
-      ).value;
+  const endTime =
+    document.getElementById(
+      "blockEndTime"
+    ).value;
 
-    const selectedBlockType =
-      blockType.value;
+  const selectedBlockType =
+    blockType.value;
 
-    const label =
-      document
-        .getElementById("blockLabel")
-        .value
-        .trim();
+  const label =
+    document
+      .getElementById("blockLabel")
+      .value
+      .trim();
 
-    if (!startTime || !endTime) {
-      alert(
-        "Please enter a start and end time."
-      );
-      return;
-    }
+  if (!startTime || !endTime) {
+    alert(
+      "Please enter a start and end time."
+    );
+    return;
+  }
 
-    if (endTime <= startTime) {
-      alert(
-        "The block end time must be after the start time."
-      );
-      return;
-    }
+  if (endTime <= startTime) {
+    alert(
+      "The block end time must be after the start time."
+    );
+    return;
+  }
 
-    let grades = [];
-    let subject = "";
+  let grades = [];
+  let subject = "";
+
+  if (
+    selectedBlockType ===
+    "Instructional Time"
+  ) {
+    subject =
+      blockSubject.value;
 
     if (
-      selectedBlockType ===
-      "Instructional Time"
+      splitClassCheckbox.checked
     ) {
-      subject =
-        blockSubject.value;
+      grades = Array.from(
+        splitGradeChoices
+          .querySelectorAll(
+            'input[type="checkbox"]:checked'
+          )
+      ).map(
+        input => input.value
+      );
 
-      if (
-        splitClassCheckbox.checked
-      ) {
-        grades = Array.from(
-          splitGradeChoices
-            .querySelectorAll(
-              'input[type="checkbox"]:checked'
-            )
-        ).map(
-          input => input.value
-        );
-
-        if (grades.length < 2) {
-          alert(
-            "A split class needs at least two grades."
-          );
-          return;
-        }
-      } else {
-        if (blockGrade.value) {
-          grades = [
-            blockGrade.value
-          ];
-        }
-      }
-
-      if (grades.length === 0) {
+      if (grades.length < 2) {
         alert(
-          "Please select a grade."
+          "A split class needs at least two grades."
         );
         return;
       }
-
-      if (!subject) {
-        alert(
-          "Please select a subject."
-        );
-        return;
-      }
+    } else if (blockGrade.value) {
+      grades = [
+        blockGrade.value
+      ];
     }
 
-    /*
-      Each repeated schedule receives one shared group ID.
+    if (grades.length === 0) {
+      alert(
+        "Please select a grade."
+      );
+      return;
+    }
 
-      That means Mon/Tue/Thu Math can behave as one
-      repeating schedule rule later.
-    */
-    let repeatGroupId =
-      makeId("repeat");
+    if (!subject) {
+      alert(
+        "Please select a subject."
+      );
+      return;
+    }
+  }
 
-    if (editingScheduleBlockId) {
-      const existingBlock =
-        workingScheduleBlocks.find(
+  /*
+    Repeated days share one repeatGroupId.
+
+    When editing a member of a repeating group, edit the group
+    as one rule. Preserve plannedDates for weekdays that already
+    existed so editing the timetable does not silently erase
+    lesson-planning state.
+  */
+  let repeatGroupId =
+    makeId("repeat");
+
+  let preservedPlannedDatesByDay =
+    new Map();
+
+  if (editingScheduleBlockId) {
+    const existingBlock =
+      workingScheduleBlocks.find(
+        item =>
+          item.id ===
+          editingScheduleBlockId
+      );
+
+    if (!existingBlock) {
+      alert(
+        "That block could not be found. Please close the dialog and try again."
+      );
+      return;
+    }
+
+    if (existingBlock.repeatGroupId) {
+      repeatGroupId =
+        existingBlock.repeatGroupId;
+
+      const relatedBlocks =
+        workingScheduleBlocks.filter(
           item =>
-            item.id ===
+            item.repeatGroupId ===
+            repeatGroupId
+        );
+
+      relatedBlocks.forEach(item => {
+        preservedPlannedDatesByDay.set(
+          item.weekday,
+          Array.isArray(item.plannedDates)
+            ? [...item.plannedDates]
+            : []
+        );
+      });
+
+      workingScheduleBlocks =
+        workingScheduleBlocks.filter(
+          item =>
+            item.repeatGroupId !==
+            repeatGroupId
+        );
+    } else {
+      preservedPlannedDatesByDay.set(
+        existingBlock.weekday,
+        Array.isArray(existingBlock.plannedDates)
+          ? [...existingBlock.plannedDates]
+          : []
+      );
+
+      workingScheduleBlocks =
+        workingScheduleBlocks.filter(
+          item =>
+            item.id !==
             editingScheduleBlockId
         );
-
-      if (
-        existingBlock?.repeatGroupId
-      ) {
-        repeatGroupId =
-          existingBlock.repeatGroupId;
-
-        // Editing one member currently edits
-        // the whole repeating group.
-        workingScheduleBlocks =
-          workingScheduleBlocks.filter(
-            item =>
-              item.repeatGroupId !==
-              repeatGroupId
-          );
-      } else {
-        // Support blocks created before
-        // repeating groups existed.
-        workingScheduleBlocks =
-          workingScheduleBlocks.filter(
-            item =>
-              item.id !==
-              editingScheduleBlockId
-          );
-      }
     }
-
-    selectedDays.forEach(
-      weekday => {
-        const block = {
-          id: makeId("block"),
-
-          repeatGroupId,
-
-          weekday,
-          startTime,
-          endTime,
-
-          blockType:
-            selectedBlockType,
-
-          label,
-          grades: [...grades],
-          subject,
-
-          /*
-            Later, individual lesson dates can
-            be recorded here as they become planned.
-          */
-          plannedDates: []
-        };
-
-        workingScheduleBlocks.push(
-          block
-        );
-      }
-    );
-
-    sortScheduleBlocks(
-      workingScheduleBlocks
-    );
-
-    renderScheduleBuilder();
-
-    scheduleBlockDialog.close();
-
-    editingScheduleBlockId = null;
   }
+
+  selectedDays.forEach(
+    weekday => {
+      const block = {
+        id: makeId("block"),
+
+        repeatGroupId,
+
+        weekday,
+        startTime,
+        endTime,
+
+        blockType:
+          selectedBlockType,
+
+        label,
+        grades: [...grades],
+        subject,
+
+        plannedDates:
+          preservedPlannedDatesByDay.get(
+            weekday
+          ) || []
+      };
+
+      workingScheduleBlocks.push(
+        block
+      );
+    }
+  );
+
+  sortScheduleBlocks(
+    workingScheduleBlocks
+  );
+
+  renderScheduleBuilder();
+
+  scheduleBlockDialog.close();
+
+  editingScheduleBlockId = null;
+}
+
+scheduleBlockForm.addEventListener(
+  "submit",
+  saveScheduleBlock
 );
+
+/*
+  Some versions of index.html used a type="button" Save Block
+  control instead of a submit button. Supporting both prevents
+  the Save Block button from appearing dead while still keeping
+  the form-submit path for Enter/keyboard use.
+*/
+if (saveScheduleBlockButton) {
+  saveScheduleBlockButton.addEventListener(
+    "click",
+    event => {
+      if (
+        saveScheduleBlockButton.type ===
+        "submit"
+      ) {
+        return;
+      }
+
+      saveScheduleBlock(event);
+    }
+  );
+}
 
 function sortScheduleBlocks(blocks) {
   blocks.sort((a, b) => {
