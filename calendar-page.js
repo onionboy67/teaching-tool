@@ -1,5 +1,5 @@
 /* ============================================================
-   TEACHER HQ — FULL CALENDAR PAGE
+   TEACHER HQ — CALENDAR VIEW PAGE
    ------------------------------------------------------------
    Reads the same local Teacher HQ data as index.html without loading
    app.js. Class identity is classId-first so two Cohorts can take the
@@ -78,7 +78,8 @@
     return (term.scheduleVersions || []).filter(version => key >= version.effectiveStart && key <= version.effectiveEnd).sort((a, b) => a.effectiveStart.localeCompare(b.effectiveStart)).at(-1);
   }
   function occurrences(key) {
-    if (exceptionFor(key)) return [];
+    const exception = exceptionFor(key);
+    if (exception && exception.type !== "Sub Day") return [];
     const date = parseDate(key), weekday = WEEKDAYS[date.getDay()], rows = [];
     termsFor(key).forEach(term => {
       const version = versionFor(term, key);
@@ -129,7 +130,8 @@
       cell.innerHTML = `<span class="full-day-number">${day}</span><div class="full-day-events"></div>`;
       const inner = cell.querySelector(".full-day-events");
       const off = exceptionFor(key);
-      if (off) inner.insertAdjacentHTML("beforeend", `<span class="full-event off">${escapeHTML(off.label || off.title || off.type)}</span>`);
+      if (off) inner.insertAdjacentHTML("beforeend", `<span class="full-event ${off.type === "Sub Day" ? "sub-day" : "off"}">${off.type === "Sub Day" ? "SUB · " : ""}${escapeHTML(off.label || off.title || off.type)}</span>`);
+      (user.dailyRecords?.[key]?.events || []).forEach(item => inner.insertAdjacentHTML("beforeend", `<span class="full-event custom-event">${item.type === "Block" ? "▥" : "•"} ${escapeHTML(item.title)}</span>`));
 
       occurrences(key).filter(occ => occ.block.blockType === "Instructional Time" && classMatchesFilter({ grades: occ.block.grades, subject: occ.block.subject }, occ.block.classId)).forEach(occ => {
         const linked = lessonForOccurrence(occ);
@@ -229,7 +231,10 @@
     });
     rows.sort((a, b) => a.time.localeCompare(b.time));
 
-    let html = off ? `<div class="daily-day-off"><strong>${escapeHTML(off.label || off.title || off.type)}</strong><span>${escapeHTML(off.type)}${off.description ? ` · ${escapeHTML(off.description)}` : ""}</span></div>` : "";
+    (user.dailyRecords?.[key]?.events || []).forEach(item => rows.push({ time: item.startTime || "12:00", html: `<article class="daily-event custom-daily-event"><time>${escapeHTML(item.startTime ? fmtTime(item.startTime) : item.type === "Block" ? "▥" : "•")}</time><div><strong>${escapeHTML(item.title)}</strong><span>${escapeHTML(item.type || "Event")}${item.notes ? ` · ${escapeHTML(item.notes)}` : ""}</span></div></article>` }));
+    rows.sort((a, b) => a.time.localeCompare(b.time));
+
+    let html = off ? `<div class="daily-day-off ${off.type === "Sub Day" ? "daily-sub-day" : ""}"><strong>${off.type === "Sub Day" ? "SUB · " : ""}${escapeHTML(off.label || off.title || off.type)}</strong><span>${escapeHTML(off.type)}${off.description ? ` · ${escapeHTML(off.description)}` : ""}</span></div>` : "";
     html += `<div class="daily-timeline">${rows.length ? rows.map(row => row.html).join("") : '<div class="empty-state-card">Nothing is scheduled for this date.</div>'}</div>`;
     if (print) {
       const reflection = user.dailyRecords?.[key]?.reflection || "";

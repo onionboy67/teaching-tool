@@ -94,7 +94,8 @@
         priorIds: [],
         todayIds: [],
         lookingAheadIds: [],
-        contextIds: []
+        contextIds: [],
+        noteVisibleIds: []
       },
       progressions: {
         Literacy: [],
@@ -136,12 +137,14 @@
   }
 
   function normalizeAgendaPart(part) {
+    const sourceType = part?.type === "attention-grabber" ? "hook" : part?.type;
     return {
       id: part?.id || makeId("agenda-part"),
       title: String(part?.title || ""),
-      type: ["attention-grabber", "purpose", "body", "wrap-up", "transition"].includes(part?.type)
-        ? part.type
+      type: ["hook", "purpose", "body", "wrap-up", "transition"].includes(sourceType)
+        ? sourceType
         : "body",
+      attentionGrabberId: String(part?.attentionGrabberId || ""),
       durationMinutes: Number(part?.durationMinutes) || 1,
       teacherDoes: String(part?.teacherDoes || ""),
       studentsDo: String(part?.studentsDo || ""),
@@ -202,7 +205,8 @@
         priorIds: unique(curriculum.priorIds),
         todayIds: unique(curriculum.todayIds),
         lookingAheadIds: unique(curriculum.lookingAheadIds),
-        contextIds: unique(curriculum.contextIds)
+        contextIds: unique(curriculum.contextIds),
+        noteVisibleIds: unique(curriculum.noteVisibleIds)
       },
       progressions: normalizeLessonProgressions(source.progressions, curriculum),
       objectives: {
@@ -283,6 +287,7 @@
     result.curriculum.todayIds = mergeFallback(plan.curriculum.todayIds, inherited.curriculum?.todayIds);
     result.curriculum.lookingAheadIds = mergeFallback(plan.curriculum.lookingAheadIds, inherited.curriculum?.lookingAheadIds);
     result.curriculum.contextIds = mergeFallback(plan.curriculum.contextIds, inherited.curriculum?.contextIds);
+    result.curriculum.noteVisibleIds = mergeFallback(plan.curriculum.noteVisibleIds, inherited.curriculum?.noteVisibleIds);
     result.objectives.iCan = mergeFallback(plan.objectives.iCan, inherited.objectives?.iCan) || "";
     result.objectives.studentsWill = mergeFallback(plan.objectives.studentsWill, inherited.objectives?.studentsWill) || "";
     result.assessments.links = mergeFallback(plan.assessments.links, inherited.assessments?.links);
@@ -975,18 +980,40 @@
     });
   }
 
-  function curriculumPickerCard({ title, subtitle, records, selectedIds, prominent = false, onChange, emptyText }) {
+  function curriculumPickerCard({ title, subtitle, records, selectedIds, prominent = false, onChange, emptyText, user, noteVisibilityIds, onNoteVisibilityChange }) {
     const wrap = document.createElement("div");
     wrap.className = `lesson-curriculum-pool ${prominent ? "prominent" : "subdued"}`;
     wrap.innerHTML = `<div class="lesson-curriculum-pool-heading"><div><span>${escapeHTML(title)}</span><small>${escapeHTML(subtitle || "")}</small></div><strong>${selectedIds.size} selected</strong></div>`;
     if (!records.length) {
       const empty = document.createElement("p"); empty.className = "empty-state"; empty.textContent = emptyText || "No curriculum has been added to this Unit pool yet."; wrap.appendChild(empty); return wrap;
     }
+
+    const noteSummary = document.createElement("div");
+    noteSummary.className = "selected-curriculum-note-summary hidden";
+    wrap.appendChild(noteSummary);
+    const drawNoteSummary = () => {
+      const noted = records.filter(record => selectedIds.has(record.id)).map(record => ({ record, note: window.TeacherHQCurriculumUI?.curriculumNote?.(user, record.id) })).filter(item => item.note);
+      noteSummary.classList.toggle("hidden", !noted.length);
+      if (!noted.length) { noteSummary.innerHTML = ""; return; }
+      noteSummary.innerHTML = `<div class="selected-note-summary-heading"><strong>Notes attached to selected curriculum</strong><small>${noted.length} teacher note${noted.length === 1 ? "" : "s"}</small></div><div class="selected-note-summary-list">${noted.map(({record,note}) => `<article data-summary-note="${escapeHTML(record.id)}"><p>${escapeHTML(note.text)}</p><button type="button" class="text-button" data-toggle-summary-note="${escapeHTML(record.id)}">${noteVisibilityIds?.has(record.id) ? "Shown on lesson plan" : "Hidden from lesson plan"}</button></article>`).join("")}</div>`;
+      noteSummary.querySelectorAll("[data-toggle-summary-note]").forEach(button => button.onclick = () => {
+        const id = button.dataset.toggleSummaryNote;
+        if (noteVisibilityIds?.has(id)) noteVisibilityIds.delete(id); else noteVisibilityIds?.add(id);
+        onNoteVisibilityChange?.([...(noteVisibilityIds || [])]);
+        const leafBox = wrap.querySelector(`[data-note-visibility-for="${CSS.escape(id)}"]`);
+        if (leafBox) leafBox.checked = noteVisibilityIds?.has(id);
+        drawNoteSummary();
+      });
+    };
+    drawNoteSummary();
+
     const tree = document.createElement("div"); wrap.appendChild(tree);
     if (window.TeacherHQCurriculumUI?.renderTree) {
       window.TeacherHQCurriculumUI.renderTree(records, tree, {
         selectable: true, selectedIds, readOnly: readOnlyMode, compact: true,
-        onSelectionChange(ids) { onChange(ids); const count = lp$(".lesson-curriculum-pool-heading strong", wrap); if (count) count.textContent = `${ids.length} selected`; }
+        user, showTeacherNotes: true, noteVisibilityIds, onNoteChanged: drawNoteSummary,
+        onNoteVisibilityChange(ids) { onNoteVisibilityChange?.(ids); drawNoteSummary(); },
+        onSelectionChange(ids) { onChange(ids); const count = lp$(".lesson-curriculum-pool-heading strong", wrap); if (count) count.textContent = `${ids.length} selected`; drawNoteSummary(); }
       });
     } else {
       // Safety fallback if the generic renderer fails to load. Keep the list usable, but still compact.
@@ -1001,10 +1028,12 @@
   }
 
   function renderCurriculumSection(context) {
-    const { unit, lesson, plan } = context;
+    const { user, unit, lesson, plan } = context;
     const section = lessonSection("curriculum", "Curriculum", unit.isStandaloneContainer
       ? "Stand-alone lessons can draw from any curriculum loaded in Teacher HQ. Choose a grade and subject, then browse collapsed branches."
       : "Today's Curriculum is intentionally the most prominent. Prior and future curriculum stay contextual rather than becoming accidental lesson objectives.");
+    const noteVisibilityIds = new Set(plan.curriculum.noteVisibleIds || []);
+    const saveNoteVisibility = ids => { plan.curriculum.noteVisibleIds = unique(ids); scheduleLessonSave(unit, plan, lesson); };
 
     if (unit.isStandaloneContainer) {
       const registry = window.TeacherHQRegistry;
@@ -1017,7 +1046,7 @@
       const drawTree=()=>{
         unit.standaloneMeta ||= {}; unit.standaloneMeta.browseGrade=gradeSelect.value; unit.standaloneMeta.browseSubject=subjectSelect.value;
         const records=registry?.curriculumFor(gradeSelect.value,subjectSelect.value)||[];
-        window.TeacherHQCurriculumUI?.renderTree(records,tree,{selectable:true,selectedIds:selected,readOnly:readOnlyMode,compact:true,onSelectionChange(ids){
+        window.TeacherHQCurriculumUI?.renderTree(records,tree,{selectable:true,selectedIds:selected,readOnly:readOnlyMode,compact:true,user,showTeacherNotes:true,noteVisibilityIds,onNoteVisibilityChange:saveNoteVisibility,onSelectionChange(ids){
           plan.curriculum.todayIds=ids;
           unit.curriculumLinks ||= { working:[], prerequisite:[], lookingAhead:[], crossCurricular:[] };
           unit.curriculumLinks.working=ids.map(id=>registry?.record(id)).filter(Boolean).map(structuredCloneSafe);
@@ -1051,7 +1080,7 @@
       title: "Prior Curriculum",
       subtitle: "Optional context from Prerequisite Curriculum.",
       records: unit.curriculumLinks?.prerequisite || [],
-      selectedIds: priorSelected,
+      selectedIds: priorSelected, user, noteVisibilityIds, onNoteVisibilityChange: saveNoteVisibility,
       onChange: ids => { plan.curriculum.priorIds = ids; scheduleLessonSave(unit, plan, lesson); },
       emptyText: "No Prerequisite Curriculum has been selected for this Unit yet."
     }));
@@ -1060,7 +1089,7 @@
       title: "Today's Curriculum",
       subtitle: "Choose from Working Curriculum. These are the objectives this lesson is actively teaching.",
       records: unit.curriculumLinks?.working || [],
-      selectedIds: todaySelected,
+      selectedIds: todaySelected, user, noteVisibilityIds, onNoteVisibilityChange: saveNoteVisibility,
       prominent: true,
       onChange: ids => { plan.curriculum.todayIds = ids; scheduleLessonSave(unit, plan, lesson); },
       emptyText: "No Working Curriculum has been selected for this Unit yet."
@@ -1070,7 +1099,7 @@
       title: "Looking Ahead",
       subtitle: "Optional next-grade context. Kept separate from today's objectives.",
       records: unit.curriculumLinks?.lookingAhead || [],
-      selectedIds: aheadSelected,
+      selectedIds: aheadSelected, user, noteVisibilityIds, onNoteVisibilityChange: saveNoteVisibility,
       onChange: ids => { plan.curriculum.lookingAheadIds = ids; scheduleLessonSave(unit, plan, lesson); },
       emptyText: "No Looking Ahead curriculum has been selected for this Unit yet."
     }));
@@ -1321,7 +1350,7 @@
 
   function agendaTypeLabel(type) {
     return {
-      "attention-grabber": "Attention Grabber",
+      hook: "Hook",
       purpose: "Purpose of Lesson",
       body: "Body",
       "wrap-up": "Wrap-Up",
@@ -1377,7 +1406,7 @@
             <div class="agenda-order-control"><span>${index + 1}</span>${readOnlyMode ? "" : `<div><button type="button" data-agenda-up ${index === 0 ? "disabled" : ""} aria-label="Move up">↑</button><button type="button" data-agenda-down ${index === plan.agenda.length - 1 ? "disabled" : ""} aria-label="Move down">↓</button></div>`}</div>
             <label><span>Part title</span><input data-agenda-title type="text" value="${escapeHTML(part.title)}" placeholder="Investigation, mini-lesson…" ${readOnlyMode ? "disabled" : ""}/></label>
             <label class="agenda-duration"><span>Time</span><select data-agenda-duration ${readOnlyMode ? "disabled" : ""}>${durationOptions(part.durationMinutes)}</select></label>
-            <label class="agenda-type"><span>Type</span><select data-agenda-type ${readOnlyMode ? "disabled" : ""}><option value="attention-grabber" ${part.type === "attention-grabber" ? "selected" : ""}>Attention Grabber</option><option value="purpose" ${part.type === "purpose" ? "selected" : ""}>Purpose of Lesson</option><option value="body" ${part.type === "body" ? "selected" : ""}>Body</option><option value="wrap-up" ${part.type === "wrap-up" ? "selected" : ""}>Wrap-Up</option><option value="transition" ${part.type === "transition" ? "selected" : ""}>Transition</option></select></label>
+            <label class="agenda-type"><span>Type</span><select data-agenda-type ${readOnlyMode ? "disabled" : ""}><option value="hook" ${part.type === "hook" ? "selected" : ""}>Hook</option><option value="purpose" ${part.type === "purpose" ? "selected" : ""}>Purpose of Lesson</option><option value="body" ${part.type === "body" ? "selected" : ""}>Body</option><option value="wrap-up" ${part.type === "wrap-up" ? "selected" : ""}>Wrap-Up</option><option value="transition" ${part.type === "transition" ? "selected" : ""}>Transition</option></select></label>
             ${readOnlyMode ? "" : '<button type="button" class="agenda-delete" data-agenda-delete aria-label="Delete part">×</button>'}
           </div>
           <div class="agenda-special-prompt" data-agenda-prompt></div>
@@ -1397,8 +1426,19 @@
           prompt.innerHTML = `<span>Wrap-Up</span><p><strong>How will we confirm the “Students will” of today?</strong><br>${escapeHTML(objective)}</p>`;
         } else if (part.type === "transition") {
           prompt.innerHTML = `<span>Transition</span><p>Plan room changes, furniture/material movement, regrouping or a change in learning modality.</p>`;
-        } else if (part.type === "attention-grabber") {
-          prompt.innerHTML = `<span>Attention Grabber</span><p>Open with something that earns attention and creates a reason to care about what comes next.</p>`;
+        } else if (part.type === "hook") {
+          const cohort = cohortForUnit(user, unit);
+          const routines = cohort?.attentionGrabbers || [];
+          prompt.innerHTML = `<span>Hook</span><p>Open with something that creates a reason to care about what comes next. A Cohort Attention Grabber can be used first to summon attention.</p>${cohort ? `<label class="hook-attention-grabber"><strong>Cohort Attention Grabber <small>optional</small></strong><select data-hook-attention ${readOnlyMode ? "disabled" : ""}><option value="">None</option>${routines.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === part.attentionGrabberId ? "selected" : ""}>${escapeHTML(item.title)}</option>`).join("")}</select><small data-hook-attention-description></small></label>` : '<small class="lesson-context-empty">Attach this Lesson to a Class with a Cohort to use saved Attention Grabbers.</small>'}`;
+          const routineSelect = prompt.querySelector("[data-hook-attention]");
+          const description = prompt.querySelector("[data-hook-attention-description]");
+          const drawRoutine = () => {
+            if (!description) return;
+            const routine = routines.find(item => item.id === routineSelect?.value);
+            description.textContent = routine?.description || (routine ? "No description saved." : "Choose one of this Cohort's saved attention routines.");
+          };
+          routineSelect?.addEventListener("change", () => { part.attentionGrabberId = routineSelect.value; scheduleLessonSave(unit, plan, lesson); drawRoutine(); });
+          drawRoutine();
         } else {
           prompt.innerHTML = `<span>Body</span><p>Describe the learning activity clearly enough that you can teach from this page.</p>`;
         }
@@ -1992,11 +2032,13 @@
     win.document.open(); win.document.write(html); win.document.close();
   }
 
-  function printCurriculum(records, ids) {
+  function printCurriculum(records, ids, user, noteVisibleIds = []) {
+    const visible = new Set(noteVisibleIds || []);
     return (records || []).filter(record => ids.includes(record.id)).map(record => {
       const path = window.TeacherHQCurriculumUI?.recordPath?.(record) || [];
       const breadcrumb = path.map(item => `${item.label}: ${item.title}`).join(" → ");
-      return `<div class="print-curriculum-item"><small>${escapePrint(record.type || record.role || "Curriculum")}</small>${breadcrumb ? `<strong>${escapePrint(breadcrumb)}</strong>` : ""}<p>${escapePrint(record.text)}</p></div>`;
+      const note = visible.has(record.id) ? window.TeacherHQCurriculumUI?.curriculumNote?.(user, record.id) : null;
+      return `<div class="print-curriculum-item"><small>${escapePrint(record.type || record.role || "Curriculum")}</small>${breadcrumb ? `<strong>${escapePrint(breadcrumb)}</strong>` : ""}<p>${escapePrint(record.text)}</p>${note ? `<div class="print-teacher-note"><b>Teacher note:</b> ${escapePrint(note.text)}</div>` : ""}</div>`;
     }).join("");
   }
 
@@ -2023,17 +2065,22 @@
       return item ? `<li><strong>${escapePrint(item.title)}</strong> · ${escapePrint(assessmentTypeLabel(item.type))}${link.toStudentsDate ? ` · TO ${escapePrint(formatDate(link.toStudentsDate))}` : ""}${link.fromStudentsDate ? ` · FROM ${escapePrint(formatDate(link.fromStudentsDate))}` : ""}</li>` : "";
     }).join("");
     const modalities = new Map((user.learningModalities || []).map(item => [item.id, item.title]));
-    const agenda = (plan.agenda || []).map((part, index) => `<tr><td>${index + 1}</td><td><strong>${escapePrint(part.title || agendaTypeLabel(part.type))}</strong><small>${escapePrint(agendaTypeLabel(part.type))}</small></td><td>${part.durationMinutes === 0.5 ? "30 sec" : `${part.durationMinutes} min`}</td><td>${escapePrint(part.teacherDoes)}</td><td>${escapePrint(part.studentsDo)}</td></tr>`).join("");
+    const printCohort = cohortForUnit(user, unit);
+    const agenda = (plan.agenda || []).map((part, index) => {
+      const routine = part.type === "hook" ? (printCohort?.attentionGrabbers || []).find(item => item.id === part.attentionGrabberId) : null;
+      const routineHTML = routine ? `<small><b>Attention Grabber:</b> ${escapePrint(routine.title)}${routine.description ? ` — ${escapePrint(routine.description)}` : ""}</small>` : "";
+      return `<tr><td>${index + 1}</td><td><strong>${escapePrint(part.title || agendaTypeLabel(part.type))}</strong><small>${escapePrint(agendaTypeLabel(part.type))}</small>${routineHTML}</td><td>${part.durationMinutes === 0.5 ? "30 sec" : `${part.durationMinutes} min`}</td><td>${escapePrint(part.teacherDoes)}</td><td>${escapePrint(part.studentsDo)}</td></tr>`;
+    }).join("");
     const observations = (plan.observations || []).filter(item => item.text.trim()).map(item => `<li>${escapePrint(item.text)}</li>`).join("");
     const bodyUdl = (plan.agenda || []).filter(part => part.type === "body").map(part => {const entry=plan.udl.parts?.[part.id]||{};return `<div class="print-note"><strong>${escapePrint(part.title || "Body")}</strong>${entry.complexity?`<p><b>Complexity/access:</b> ${escapePrint(entry.complexity)}</p>`:""}${entry.multisensory?`<p><b>Multisensory:</b> ${escapePrint(entry.multisensory)}</p>`:""}</div>`;}).join("");
     const indigenousResources = (user.indigenousResources || []).filter(item => plan.indigenous.resourceIds.includes(item.id)).map(item => item.title).join(", ");
 
     return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapePrint(lessonDisplayTitleForUnit(unit, lesson))}</title><style>
-      @page{size:letter;margin:.55in}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17171a;margin:0;font-size:11px;line-height:1.4}.controls{display:flex;justify-content:flex-end;margin-bottom:16px}.controls button{border:0;background:#1d1d1f;color:#fff;border-radius:10px;padding:10px 15px;font-weight:700}h1{font-size:24px;margin:0 0 4px}h2{font-size:15px;margin:20px 0 8px;border-bottom:2px solid #222;padding-bottom:5px}.meta{color:#666;margin-bottom:15px}.objective-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.objective{border:1.5px solid #222;border-radius:10px;padding:10px;font-size:13px}.objective span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:4px}.print-curriculum-item{border-left:3px solid #888;padding:7px 9px;margin:6px 0;background:#f7f7f8}.print-curriculum-item small,.print-curriculum-item span{display:block;color:#666}.print-curriculum-item p{margin:4px 0 0}.agenda-summary{margin:0 0 8px;padding-left:18px}.agenda-summary li{margin:3px 0}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #aaa;padding:6px;vertical-align:top}th{background:#f2f2f3;font-size:9px;text-transform:uppercase}td:nth-child(1){width:5%}td:nth-child(2){width:19%}td:nth-child(3){width:8%}td small{display:block;color:#666}.print-note{padding:7px 9px;background:#f5f5f7;border-radius:8px;margin:5px 0}.print-note p{margin:3px 0}.reflection-box{height:4.8in;border:2px solid #333;border-radius:10px;padding:12px}.reflection-box p{white-space:pre-wrap}.page-break{break-before:page}.completion{margin-top:12px}.muted{color:#777}@media print{.controls{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}tr,.print-curriculum-item,.objective{break-inside:avoid}}</style></head><body><div class="controls"><button onclick="window.print()">Print / Save PDF</button></div>
+      @page{size:letter;margin:.55in}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17171a;margin:0;font-size:11px;line-height:1.4}.controls{display:flex;justify-content:flex-end;margin-bottom:16px}.controls button{border:0;background:#1d1d1f;color:#fff;border-radius:10px;padding:10px 15px;font-weight:700}h1{font-size:24px;margin:0 0 4px}h2{font-size:15px;margin:20px 0 8px;border-bottom:2px solid #222;padding-bottom:5px}.meta{color:#666;margin-bottom:15px}.objective-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.objective{border:1.5px solid #222;border-radius:10px;padding:10px;font-size:13px}.objective span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:4px}.print-curriculum-item{border-left:3px solid #888;padding:7px 9px;margin:6px 0;background:#f7f7f8}.print-curriculum-item small,.print-curriculum-item span{display:block;color:#666}.print-curriculum-item p{margin:4px 0 0}.print-teacher-note{margin-top:6px;padding:6px 8px;border-radius:6px;background:#fff3c4}.agenda-summary{margin:0 0 8px;padding-left:18px}.agenda-summary li{margin:3px 0}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #aaa;padding:6px;vertical-align:top}th{background:#f2f2f3;font-size:9px;text-transform:uppercase}td:nth-child(1){width:5%}td:nth-child(2){width:19%}td:nth-child(3){width:8%}td small{display:block;color:#666}.print-note{padding:7px 9px;background:#f5f5f7;border-radius:8px;margin:5px 0}.print-note p{margin:3px 0}.reflection-box{height:4.8in;border:2px solid #333;border-radius:10px;padding:12px}.reflection-box p{white-space:pre-wrap}.page-break{break-before:page}.completion{margin-top:12px}.muted{color:#777}@media print{.controls{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}tr,.print-curriculum-item,.objective{break-inside:avoid}}</style></head><body><div class="controls"><button onclick="window.print()">Print / Save PDF</button></div>
       <h1>${escapePrint(lessonDisplayTitleForUnit(unit, lesson))}</h1><div class="meta">${escapePrint(classLabel(unit.classSpec))} · ${escapePrint(unit.name)} · ${escapePrint(formatLongDate(lesson.dateKey))} · ${escapePrint(formatTime(lesson.startTime))}–${escapePrint(formatTime(lesson.endTime))} · ${escapePrint(hoursLabel(lesson.durationMinutes))}</div>
       ${cohortContextPrintHTML(user, unit, plan)}
       ${plan.general.contextMode !== "generic" && plan.general.context ? `<p><strong>Additional lesson context:</strong> ${escapePrint(plan.general.context)}</p>` : ""}
-      <h2>Curriculum</h2>${printScienceContext(unit, plan.curriculum.contextIds)}${printCurriculum(unit.curriculumLinks?.prerequisite || [], plan.curriculum.priorIds)}${printCurriculum(unit.curriculumLinks?.working || [], plan.curriculum.todayIds)}${printCurriculum(unit.curriculumLinks?.lookingAhead || [], plan.curriculum.lookingAheadIds)}
+      <h2>Curriculum</h2>${printScienceContext(unit, plan.curriculum.contextIds)}${printCurriculum(unit.curriculumLinks?.prerequisite || [], plan.curriculum.priorIds, user, plan.curriculum.noteVisibleIds)}${printCurriculum(unit.curriculumLinks?.working || [], plan.curriculum.todayIds, user, plan.curriculum.noteVisibleIds)}${printCurriculum(unit.curriculumLinks?.lookingAhead || [], plan.curriculum.lookingAheadIds, user, plan.curriculum.noteVisibleIds)}
       ${printProgressions(plan) ? `<h2>Literacy, Numeracy, Career & Competency Progressions</h2>${printProgressions(plan)}` : ""}
       <h2>Objectives</h2><div class="objective-grid"><div class="objective"><span>I can…</span>${escapePrint(plan.objectives.iCan || "—")}</div><div class="objective"><span>Students will…</span>${escapePrint(plan.objectives.studentsWill || "—")}</div></div>
       ${assessments ? `<h2>Assessments</h2><ul>${assessments}</ul>` : ""}${observations ? `<h2>Observations</h2><ul>${observations}</ul>` : ""}

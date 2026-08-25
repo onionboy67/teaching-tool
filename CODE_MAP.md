@@ -1,45 +1,44 @@
 # Teacher HQ — Code Map
 
-Teacher HQ is a static GitHub Pages application with major systems separated into named modules for easier maintenance and debugging.
-
-## Core application
-- `index.html` — Teacher HQ dashboard and static dialogs.
-- `styles.css` — core interface styles.
-- `app.js` — core data model, profiles, School Terms, schedule history, Units, resources, Field Trips, Assessments, backups and Simulation workspace integration.
+## Main application
+- `index.html` — Teacher HQ profile selection, persistent left navigation, Overview calendar/right action rail, Backup & Share section, dialogs.
+- `styles.css` — core application styles.
+- `app.js` — storage, users, School Terms, schedules, Days Off/Sub Days, Units, workspace logic, backups/read views, core helpers.
+- `main-page-redesign.css` — release-specific main page, notification, Cohort, curriculum-browser and responsive UI layer.
+- `main-page-redesign.js` — persistent-navigation and quick-action wiring.
 
 ## Cohorts / Classes
-- `classes.js` — Cohort + anonymous student model, two-digit student-code generation, optional nicknames, student interests/reminders, modular Cohort context, persistent Classes, Class editor/dashboard, archive state, curriculum coverage and Unit copying.
-- Primary hierarchy: `Teacher HQ → Cohort → Class → Unit → Lesson`.
-- Schedule blocks reference Classes; Classes reference Cohorts.
+- `classes.js` — Cohort → Class architecture; anonymous Student ## profiles; nicknames; interests; individual complexities; Cohort context; Attention Grabbers; interest reminders; Class setup; curriculum coverage; Cohort dashboards; Unit grouping/copy support.
 
-## Curriculum data
-- `curriculum-data.js` — Math, Science, ELA and PE curriculum records.
-- `fine-arts-data.js` — Art, Drama, Music and Arts Competency records.
-- `social-studies-data.js` — Social Studies K–9 records.
-- `career-curriculum-data.js` — Career Education & Financial Literacy Grades 7–9.
-- `progressions-data.js` — Literacy, Numeracy, Career and Competency planning progressions.
-- `bloom-data.js` — teacher-supplied Bloom verb reference.
-- `data-registry.js` — unified lookup layer across curriculum/progression files.
-
-## Curriculum / progression navigation
-- `curriculum-browser.js` — stand-alone Curriculum Browser, split-grade view and Progression Browser. Trees begin collapsed.
-
-## Calendar systems
-- `calendar-tools.js` — Overview calendar, compact notification dock, Daily View, shared calendar picker, Daily Reflection, course colours and archived occurrence handling.
-- `calendar.html` — enlarged Full Calendar page.
-- `calendar-page.js` — Full Calendar logic, Class-ID-first event identity, archive markers and Cohort-interest reminder display.
-- `calendar-page.css` — Full Calendar styles.
-
-## Lesson / planning systems
-- `lesson-planner.js` — Lesson Planner including Cohort Context inheritance/overrides, agendas, UDL, curriculum, assessments, reflection, Cognitive Tempo and lesson calendar.
+## Lesson Planner
+- `lesson-planner.js` — living Lesson Planner; curriculum selection; persistent curriculum-note visibility; Objectives; Assessments; Observations; Hook/Agenda; Cohort Attention Grabber selection; UDL; Indigenous Voices; Reflection; print output.
 - `lesson-planner.css` — Lesson Planner styles.
-- `mega-features.js` — cross-system features such as stand-alone Lessons, reusable saved contexts, progression planning, Field Trip lesson shifting and 4-point rubric support.
-- `mega-features.css` — newer UI components including Cohorts/Classes, notifications, archive states, grade/colour controls, calendars and rubric additions.
 
-## Safety / deletion
-- `trash.js` — six-month soft deletion, restore/permanent delete logic, Cohort/Class relationship restoration and deleted-user workspace support.
+## Calendar
+- `calendar-tools.js` — Overview calendar renderer, central notifications, Daily View, custom Daily Events/Blocks, shared calendar picker, course colours, Sub Day display.
+- `calendar.html` — dedicated **Calendar View** page.
+- `calendar-page.js` — Calendar View logic, filters, archive markers, Sub Days, Daily View content.
+- `calendar-page.css` — Calendar View styles.
 
-## Data philosophy
-Curriculum and planning progressions are intentionally separate. Curriculum can participate in Unit/Lesson/Assessment coverage. Progression descriptors are planning supports with Develop / Practise / Observe intent.
+## Curriculum / progressions
+- `data-registry.js` — unified curriculum/progression registry.
+- `curriculum-browser.js` — hierarchy-agnostic collapsed curriculum renderer, visual Grade/Subject browser, two-pane Split Grade View, integrated Progressions mode, persistent teacher curriculum notes.
+- `curriculum-data.js` — Math, Science, ELA, PE curriculum records.
+- `fine-arts-data.js` — Fine Arts curriculum records.
+- `social-studies-data.js` — Social Studies curriculum records.
+- `career-curriculum-data.js` — Career Education & Financial Literacy curriculum records.
+- `progressions-data.js` — Literacy, Numeracy, Competency and Career progression records.
+- `bloom-data.js` — Bloom verb/reference data.
 
-Cohort is the student-group identity. Class is the course identity. School Terms describe when Classes meet; finishing a School Term does not delete its historical calendar.
+## Other feature layers
+- `mega-features.js` — stand-alone Lessons, Lesson hub, saved contexts, Field Trip shifting, assessment/rubric enhancements, deleted-user support and other cross-feature integrations.
+- `mega-features.css` — shared feature styling from the previous large release.
+- `trash.js` — soft-delete, restore, permanent delete and six-month Trash logic.
+
+## Validation/reference files
+- `data-validation.json`
+- `ela-pe-curriculum-validation.md`
+- `fine-arts-curriculum-validation.md`
+- `QA_REPORT.md`
+- `RELEASE_NOTES.md`
+- `INSTALL.md`

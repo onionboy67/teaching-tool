@@ -4,9 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Teacher HQ</title>
-  <link rel="stylesheet" href="styles.css?v=16" />
-  <link rel="stylesheet" href="lesson-planner.css?v=16" />
-  <link rel="stylesheet" href="mega-features.css?v=16" />
+  <link rel="stylesheet" href="styles.css?v=17" />
+  <link rel="stylesheet" href="lesson-planner.css?v=17" />
+  <link rel="stylesheet" href="mega-features.css?v=17" />
+  <link rel="stylesheet" href="main-page-redesign.css?v=17" />
 </head>
 <body>
 
@@ -31,170 +32,119 @@
   </main>
 
   <main id="teacherHQView" class="view hidden">
-    <div class="page-shell">
-      <header class="top-bar">
-        <div class="title-row">
-          <h1>Teacher HQ</h1>
-          <div id="readOnlyBanner" class="read-only-badge hidden">Read View</div>
+    <div class="hq-app-frame">
+      <aside class="hq-primary-nav" aria-label="Teacher HQ navigation">
+        <div class="hq-nav-brand">
+          <span class="hq-nav-mark">HQ</span>
+          <strong>Teacher HQ</strong>
         </div>
+        <nav class="hq-nav-list">
+          <button id="openCohortsNavButton" type="button" class="hq-nav-item edit-only"><span>◎</span><strong>Cohorts</strong></button>
+          <button id="manageClassesButton" type="button" class="hq-nav-item edit-only"><span>▤</span><strong>Classes</strong></button>
+          <button id="openUnitPlannerButton" type="button" class="hq-nav-item edit-only"><span>▦</span><strong>Unit Planner</strong></button>
+          <button id="openCurriculumBrowserButton" type="button" class="hq-nav-item"><span>⌘</span><strong>Curriculum Browser</strong></button>
+          <button id="openBackupShareNavButton" type="button" class="hq-nav-item"><span>⇩</span><strong>Backup &amp; Share</strong></button>
+          <button id="openTrashButton" type="button" class="hq-nav-item hq-nav-trash edit-only"><span>⌫</span><strong>Trash</strong></button>
+        </nav>
+      </aside>
 
-        <div class="current-user-area">
-          <div id="currentUserAvatar" class="mini-avatar"></div>
-          <div class="current-user-text">
-            <span id="currentUsername"></span>
-            <button id="switchUserButton" class="text-button">Switch User</button>
+      <div class="page-shell hq-main-shell">
+        <header class="top-bar">
+          <div class="title-row">
+            <h1>Teacher HQ</h1>
+            <div id="readOnlyBanner" class="read-only-badge hidden">Read View</div>
           </div>
-        </div>
-      </header>
 
-      <section class="section">
-        <div class="section-heading-row">
-          <div>
-            <h2>Overview</h2>
-            <p id="activeTermsLabel" class="section-subtitle">No school terms yet.</p>
+          <div class="current-user-area">
+            <div id="currentUserAvatar" class="mini-avatar"></div>
+            <div class="current-user-text">
+              <span id="currentUsername"></span>
+              <button id="switchUserButton" class="text-button">Switch User</button>
+            </div>
           </div>
+        </header>
 
-          <div class="section-action-row edit-only">
-            <a href="calendar.html" class="secondary-button icon-text-button">▦ Full Calendar</a>
-            <button id="manageDaysOffButton" class="secondary-button icon-text-button" title="Manage holidays, PD days, and other no-school dates">🌴 Days Off</button>
-            <button id="addTermButton" class="secondary-button">+ Add School Term</button>
-          </div>
-        </div>
-
-        <div id="notificationDock" class="notification-dock hidden" role="status"></div>
-
-        <div id="backupReminder" class="notice notice-backup hidden legacy-notice" role="status">
-          <div class="notice-icon">↓</div>
-          <div>
-            <strong>Today's backup has not been downloaded yet.</strong>
-            <p>Your working data is still stored in this browser. Download a daily backup for a portable recovery copy.</p>
-          </div>
-          <button id="backupReminderButton" class="secondary-button">Download Backup</button>
-        </div>
-
-        <div id="unplannedAlert" class="notice notice-danger hidden legacy-notice" role="status">
-          <div class="notice-icon">!</div>
-          <div>
-            <strong id="unplannedAlertText">Unplanned instructional blocks need attention</strong>
-          </div>
-        </div>
-
-        <div id="conflictAlert" class="notice notice-warning hidden legacy-notice" role="status">
-          <div class="notice-icon">!</div>
-          <div>
-            <strong id="conflictAlertText">Schedule conflicts need review</strong>
-            <p>Overlapping blocks are allowed, but are highlighted so you can confirm that the overlap is intentional.</p>
-          </div>
-        </div>
-
-        <div id="pdAlert" class="notice notice-info hidden legacy-notice" role="status">
-          <div class="notice-icon">i</div>
-          <div>
-            <strong id="pdAlertText">PD Day details need attention</strong>
-            <p id="pdAlertDetail">A PD Day within the next two weeks is missing a location or topic.</p>
-          </div>
-          <button id="pdAlertButton" class="secondary-button edit-only">Review PD Days</button>
-        </div>
-
-        <section id="calendarCard" class="calendar-card" aria-label="Open full calendar">
-          <div class="calendar-header">
+        <section class="section hq-overview-section">
+          <div class="section-heading-row hq-overview-heading">
             <div>
-              <p class="small-label">Calendar</p>
-              <h3 id="monthTitle"></h3>
+              <h2>Overview</h2>
+              <p id="activeTermsLabel" class="section-subtitle">No school terms yet.</p>
             </div>
-            <div class="calendar-controls">
-              <button id="previousMonth" class="icon-button" aria-label="Previous month">←</button>
-              <button id="nextMonth" class="icon-button" aria-label="Next month">→</button>
-            </div>
+            <button id="addTermButton" class="secondary-button compact-term-button edit-only">+ Add School Term</button>
           </div>
 
-          <div id="calendarGrid" class="calendar-grid"></div>
+          <div class="overview-dashboard-grid">
+            <div class="overview-calendar-stack">
+              <section id="calendarCard" class="calendar-card" aria-label="Teaching calendar">
+                <div class="calendar-header">
+                  <div>
+                    <p class="small-label">Calendar</p>
+                    <h3 id="monthTitle"></h3>
+                  </div>
+                  <div class="calendar-controls">
+                    <button id="previousMonth" class="icon-button" aria-label="Previous month">←</button>
+                    <button id="nextMonth" class="icon-button" aria-label="Next month">→</button>
+                  </div>
+                </div>
 
-          <div class="calendar-legend">
-            <span><i class="legend-dot legend-red"></i> Unplanned</span>
-            <span><i class="legend-dot legend-green"></i> Planned</span>
-            <span><i class="legend-dot legend-yellow"></i> Conflict</span>
-            <span><i class="legend-dot legend-blue"></i> Days Off / PD</span>
-            <span><i class="legend-dot legend-grey"></i> Past / weekend</span>
+                <div id="calendarGrid" class="calendar-grid"></div>
+
+                <div class="calendar-legend">
+                  <span><i class="legend-dot legend-red"></i> Unplanned</span>
+                  <span><i class="legend-dot legend-green"></i> Planned</span>
+                  <span><i class="legend-dot legend-yellow"></i> Conflict</span>
+                  <span><i class="legend-dot legend-blue"></i> Days Off / PD</span>
+                  <span><i class="legend-dot legend-grey"></i> Past / weekend</span>
+                </div>
+
+                <div class="calendar-footer">Select a day to open its Daily View. Lesson titles open the Lesson Planner.</div>
+              </section>
+              <div id="termSummaryList" class="term-summary-list"></div>
+            </div>
+
+            <aside class="overview-quick-sidebar" aria-label="Calendar actions">
+              <section class="overview-side-card notification-hub-card">
+                <div class="overview-side-heading"><span class="side-icon">!</span><div><strong>Notifications</strong><small>Items waiting for your attention</small></div></div>
+                <div id="notificationDock" class="notification-dock" role="status"></div>
+              </section>
+              <button id="quickAddLessonButton" type="button" class="overview-action-card edit-only"><span class="overview-action-symbol">✎</span><div><strong>+ Add Lesson</strong><small>Create a stand-alone lesson</small></div></button>
+              <button id="manageDaysOffButton" type="button" class="overview-action-card days-off-action edit-only" title="Manage holidays, PD days, substitute days, and other calendar exceptions"><div><strong>+ Days Off</strong><small class="palm-tree-label">🌴</small></div></button>
+              <a href="calendar.html" class="overview-action-card"><span class="overview-action-symbol">▦</span><div><strong>Calendar View</strong><small>Open the calendar workspace</small></div></a>
+            </aside>
           </div>
-
-          <div class="calendar-footer">Click the calendar background to open the full calendar</div>
         </section>
 
-        <div id="termSummaryList" class="term-summary-list"></div>
-      </section>
-
-      <section id="classesSection" class="section">
-        <div class="section-heading-row">
-          <div>
-            <h2>Classes</h2>
-            <p class="section-subtitle">Each Class connects a Cohort to curriculum, Units, Lessons, assessment, and coverage tracking.</p>
+        <section id="backupShareSection" class="section backup-share-section">
+          <div class="section-heading-row">
+            <div>
+              <h2>Backup &amp; Share</h2>
+              <p class="section-subtitle">Download a portable recovery copy or a read-only share.</p>
+            </div>
           </div>
-          <button id="manageClassesButton" class="primary-button edit-only">Manage Cohorts &amp; Classes</button>
-        </div>
-        <div id="classOverviewList" class="class-overview-grid"></div>
-      </section>
-
-      <section class="section">
-        <div class="section-heading-row">
-          <div>
-            <h2>Unit Planner</h2>
-            <p class="section-subtitle">Create units, select curriculum when available, allocate instructional hours, and build lesson placeholders from your real schedule.</p>
+          <div class="backup-actions">
+            <button id="downloadBackupButton" class="primary-button">Download Daily Backup</button>
+            <button id="downloadReadViewButton" class="secondary-button">Download Read View</button>
+            <button id="previewReadViewButton" class="secondary-button">Preview Read View</button>
+            <button id="restoreBackupHQButton" class="secondary-button edit-only">Restore Backup</button>
           </div>
-          <div class="section-action-row">
-            <button id="openLessonPlannerHubButton" class="secondary-button edit-only">Lesson Planner</button>
-            <button id="openUnitPlannerButton" class="primary-button edit-only">Open Unit Planner</button>
-          </div>
-        </div>
-        <div id="unitOverviewList" class="unit-overview-list"></div>
-      </section>
+          <p id="backupStatusText" class="section-subtitle backup-status"></p>
+        </section>
 
-      <section class="section planning-tools-section">
-        <div class="section-heading-row">
-          <div><h2>Curriculum &amp; Progressions</h2><p class="section-subtitle">Browse Alberta curriculum independently, compare split grades, or explore literacy, numeracy, career, and competency progressions.</p></div>
-        </div>
-        <div class="tool-launch-grid">
-          <button id="openCurriculumBrowserButton" class="tool-launch-card"><span>📚</span><strong>Curriculum Browser</strong><small>Kindergarten–Grade 9 · split-grade view available</small></button>
-          <button id="openProgressionBrowserButton" class="tool-launch-card"><span>🧭</span><strong>Progression Browser</strong><small>Literacy · Numeracy · Career · Competencies</small></button>
-        </div>
-      </section>
+        <!-- Compatibility hooks retained for existing planner modules. These are
+             intentionally not part of the main-page visual hierarchy. -->
+        <section id="classesSection" class="hidden" aria-hidden="true"><div id="classOverviewList"></div></section>
+        <section class="hidden" aria-hidden="true"><button id="openLessonPlannerHubButton" type="button"></button><div id="unitOverviewList"></div></section>
+        <section class="hidden" aria-hidden="true"><button id="openProgressionBrowserButton" type="button"></button></section>
+        <section id="weeklyScheduleSection" class="hidden" aria-hidden="true"><div id="weeklyScheduleDisplay"></div></section>
+        <section id="termsSection" class="hidden" aria-hidden="true"><div id="termsList"></div></section>
 
-      <section id="weeklyScheduleSection" class="section hidden">
-        <div class="section-heading-row">
-          <div>
-            <h2>Weekly Blocks</h2>
-            <p class="section-subtitle">Instructional Time blocks only. Red means the next occurrence needs planning; green means the next occurrence is planned.</p>
-          </div>
+        <div class="hidden" aria-hidden="true">
+          <div id="backupReminder" class="notice notice-backup legacy-notice"><div class="notice-icon">↓</div><div><strong>Backup reminder</strong></div><button id="backupReminderButton" type="button">Download Backup</button></div>
+          <div id="unplannedAlert" class="notice notice-danger legacy-notice"><div class="notice-icon">!</div><div><strong id="unplannedAlertText">Unplanned instructional blocks need attention</strong></div></div>
+          <div id="conflictAlert" class="notice notice-warning legacy-notice"><div class="notice-icon">!</div><div><strong id="conflictAlertText">Schedule conflicts need review</strong></div></div>
+          <div id="pdAlert" class="notice notice-info legacy-notice"><div class="notice-icon">i</div><div><strong id="pdAlertText">PD Day details need attention</strong><p id="pdAlertDetail"></p></div><button id="pdAlertButton" type="button">Review PD Days</button></div>
         </div>
-        <div id="weeklyScheduleDisplay"></div>
-      </section>
-
-      <section id="termsSection" class="section hidden">
-        <div class="section-heading-row">
-          <div>
-            <h2>School Terms</h2>
-            <p class="section-subtitle">Terms may overlap. Schedule changes create a new effective version so previous dates stay intact.</p>
-          </div>
-        </div>
-        <div id="termsList" class="terms-list"></div>
-      </section>
-
-      <section class="section">
-        <div class="section-heading-row">
-          <div>
-            <h2>Backup &amp; Share</h2>
-            <p class="section-subtitle">Backups are restorable. Read View files can be opened directly or loaded into Teacher HQ without changing local data.</p>
-          </div>
-        </div>
-        <div class="backup-actions">
-          <button id="downloadBackupButton" class="primary-button">Download Daily Backup</button>
-          <button id="downloadReadViewButton" class="secondary-button">Download Read View</button>
-          <button id="previewReadViewButton" class="secondary-button">Preview Read View</button>
-          <button id="restoreBackupHQButton" class="secondary-button edit-only">Restore Backup</button>
-          <button id="openTrashButton" class="secondary-button edit-only">Trash</button>
-        </div>
-        <p id="backupStatusText" class="section-subtitle backup-status"></p>
-      </section>
+      </div>
     </div>
   </main>
 
@@ -303,7 +253,7 @@
       <div class="modal-heading">
         <div>
           <h2>Days Off &amp; PD Days</h2>
-          <p class="section-subtitle">Add one day or a date range. These dates stay visible on the calendar, but instructional time and unit lessons are removed from them.</p>
+          <p class="section-subtitle">Add a Holiday, PD Day, other no-school date, or a Sub Day. Sub Days stay instructional and keep normal lesson planning active.</p>
         </div>
         <button id="closeDaysOffButton" type="button" class="close-button" aria-label="Close">×</button>
       </div>
@@ -323,18 +273,22 @@
               </label>
               <label class="choice-card">
                 <input id="dayOffPDNo" type="radio" name="dayOffIsPD" value="no" />
-                <span><strong>No</strong><small>Holiday or another day off</small></span>
+                <span><strong>No</strong><small>Holiday, Sub Day, or another calendar exception</small></span>
               </label>
             </div>
           </section>
 
           <section id="nonPDTypeFields" class="day-off-question-card hidden">
             <p class="question-kicker">Type of day off</p>
-            <h3>Is it a holiday or something else?</h3>
-            <div class="choice-card-row two-choice-row">
+            <h3>What kind of calendar exception is this?</h3>
+            <div class="choice-card-row three-choice-row">
               <label class="choice-card">
                 <input id="dayOffHolidayChoice" type="radio" name="dayOffNonPDType" value="Holiday" />
                 <span><strong>Holiday</strong><small>School or statutory holiday</small></span>
+              </label>
+              <label class="choice-card sub-day-choice">
+                <input id="dayOffSubChoice" type="radio" name="dayOffNonPDType" value="Sub Day" />
+                <span><strong>Sub Day</strong><small>Normal instruction with a substitute teacher</small></span>
               </label>
               <label class="choice-card">
                 <input id="dayOffOtherChoice" type="radio" name="dayOffNonPDType" value="Other" />
@@ -584,19 +538,20 @@
     </div>
   </dialog>
 
-  <script src="curriculum-data.js?v=16"></script>
-  <script src="fine-arts-data.js?v=16"></script>
-  <script src="social-studies-data.js?v=16"></script>
-  <script src="career-curriculum-data.js?v=16"></script>
-  <script src="progressions-data.js?v=16"></script>
-  <script src="data-registry.js?v=16"></script>
-  <script src="bloom-data.js?v=16"></script>
-  <script src="app.js?v=16"></script>
-  <script src="lesson-planner.js?v=16"></script>
-  <script src="classes.js?v=16"></script>
-  <script src="calendar-tools.js?v=16"></script>
-  <script src="curriculum-browser.js?v=16"></script>
-  <script src="trash.js?v=16"></script>
-  <script src="mega-features.js?v=16"></script>
+  <script src="curriculum-data.js?v=17"></script>
+  <script src="fine-arts-data.js?v=17"></script>
+  <script src="social-studies-data.js?v=17"></script>
+  <script src="career-curriculum-data.js?v=17"></script>
+  <script src="progressions-data.js?v=17"></script>
+  <script src="data-registry.js?v=17"></script>
+  <script src="bloom-data.js?v=17"></script>
+  <script src="app.js?v=17"></script>
+  <script src="lesson-planner.js?v=17"></script>
+  <script src="classes.js?v=17"></script>
+  <script src="calendar-tools.js?v=17"></script>
+  <script src="curriculum-browser.js?v=17"></script>
+  <script src="trash.js?v=17"></script>
+  <script src="mega-features.js?v=17"></script>
+  <script src="main-page-redesign.js?v=17"></script>
 </body>
 </html>

@@ -126,6 +126,16 @@
     };
   }
 
+  function normalizeAttentionGrabber(item) {
+    return {
+      id: item?.id || makeId("attention-grabber"),
+      title: clean(item?.title || item?.name),
+      description: String(item?.description || ""),
+      createdAt: item?.createdAt || nowISO(),
+      updatedAt: item?.updatedAt || nowISO()
+    };
+  }
+
   function normalizeStudent(item, usedCodes) {
     let code = clean(item?.code).replace(/\D/g, "").slice(-2).padStart(2, "0");
     if (!/^\d{2}$/.test(code) || usedCodes.has(code)) code = availableStudentCode(usedCodes) || "00";
@@ -170,6 +180,7 @@
       id: item?.id || makeId("cohort"),
       name: clean(item?.name) || "Cohort",
       students: Array.isArray(item?.students) ? item.students.map(student => normalizeStudent(student, usedCodes)) : [],
+      attentionGrabbers: Array.isArray(item?.attentionGrabbers) ? item.attentionGrabbers.map(normalizeAttentionGrabber).filter(entry => entry.title) : [],
       context,
       notes: String(item?.notes || ""),
       archivedAt: item?.archivedAt || null,
@@ -602,6 +613,7 @@
     const copy = normalizeCohort({
       name,
       students: [],
+      attentionGrabbers: clone(source.attentionGrabbers || []),
       context: clone(source.context),
       notes: source.notes,
       archivedAt: null
@@ -814,16 +826,20 @@
   }
 
   function classOptionSpecs(user) {
-    return activeClasses(user).map(item => ({
-      classId: item.id,
-      id: item.id,
-      name: item.name,
-      grades: [...item.grades],
-      subject: item.subject,
-      subjects: [...normalizeSubjects(item.subjects, item.subject)],
-      cohortId: item.cohortId,
-      colour: item.colour
-    }));
+    return activeClasses(user).map(item => {
+      const cohort = cohortForClass(user, item);
+      return {
+        classId: item.id,
+        id: item.id,
+        name: cohort ? `${cohort.name} · ${item.name}` : item.name,
+        className: item.name,
+        grades: [...item.grades],
+        subject: item.subject,
+        subjects: [...normalizeSubjects(item.subjects, item.subject)],
+        cohortId: item.cohortId,
+        colour: item.colour
+      };
+    });
   }
 
   /* ==========================================================
@@ -1097,7 +1113,7 @@
     document.body.appendChild(dialog); dialog.querySelector("[data-close]").onclick = () => dialog.close(); dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); }); return dialog;
   }
 
-  function openCohortDashboard(cohortId, tab = "context") {
+  function openCohortDashboard(cohortId, tab = "students") {
     const user = getActiveUser(), cohort = cohortById(user, cohortId); if (!cohort) return;
     const dialog = createCohortDashboardDialog(); dialog.dataset.cohortId = cohortId; renderCohortDashboard(dialog, user, cohort, tab); dialog.showModal();
   }
@@ -1105,12 +1121,15 @@
   function renderCohortDashboard(dialog, user, cohort, tab) {
     dialog.querySelector("[data-cohort-title]").textContent = `${cohort.archivedAt ? "✓ " : ""}${cohort.name}`;
     dialog.querySelector("[data-cohort-meta]").textContent = `${cohort.students.length} anonymous student profile${cohort.students.length === 1 ? "" : "s"}`;
-    const tabs = ["context", "students", "reminders", "classes"];
-    const labels = { context: "Context", students: "Students & Interests", reminders: "Interest Reminders", classes: "Classes" };
+    const tabs = ["students", "attention", "context", "curriculum", "assessments", "reminders", "classes"];
+    const labels = { students: "Students & Interests", attention: "Attention Grabbers", context: "Context", curriculum: "Curriculum Progress", assessments: "Assessments", reminders: "Interest Reminders", classes: "Classes" };
     const nav = dialog.querySelector("[data-cohort-tabs]"); nav.innerHTML = tabs.map(id => `<button type="button" class="${tab === id ? "active" : ""}" data-tab="${id}">${labels[id]}</button>`).join("");
     nav.querySelectorAll("button").forEach(button => button.onclick = () => renderCohortDashboard(dialog, user, cohort, button.dataset.tab));
     const content = dialog.querySelector("[data-cohort-content]"); content.innerHTML = "";
     if (tab === "students") return renderCohortStudents(content, user, cohort, dialog);
+    if (tab === "attention") return renderAttentionGrabbers(content, user, cohort, dialog);
+    if (tab === "curriculum") return renderCohortCurriculumProgress(content, user, cohort, dialog);
+    if (tab === "assessments") return renderCohortAssessments(content, user, cohort, dialog);
     if (tab === "reminders") return renderInterestReminders(content, user, cohort, dialog);
     if (tab === "classes") return renderCohortClasses(content, user, cohort);
     return renderCohortContext(content, user, cohort, dialog);
@@ -1217,6 +1236,75 @@
     dialog.showModal();
   }
 
+  function renderAttentionGrabbers(container, user, cohort, dialog) {
+    cohort.attentionGrabbers ||= [];
+    const intro = document.createElement("div");
+    intro.className = "cohort-workspace-intro attention-grabber-intro";
+    intro.innerHTML = `<div><p class="small-label">Cohort routine library</p><h3>Attention Grabbers</h3><p>Reusable actions for getting this Cohort's attention. These become selectable inside a Lesson Planner Hook.</p></div>${readOnlyMode ? "" : '<button type="button" class="primary-button" data-add-attention>+ Add Attention Grabber</button>'}`;
+    intro.querySelector("[data-add-attention]")?.addEventListener("click", () => openAttentionGrabberEditor(user, cohort, null, () => renderCohortDashboard(dialog, user, cohort, "attention")));
+    container.appendChild(intro);
+    const grid = document.createElement("div"); grid.className = "attention-grabber-grid";
+    cohort.attentionGrabbers.forEach(item => {
+      const card = document.createElement("article"); card.className = "attention-grabber-card";
+      card.innerHTML = `<div class="attention-grabber-card-icon">!</div><div><strong>${escapeHTML(item.title)}</strong><p>${item.description ? escapeHTML(item.description) : '<span class="muted">No description yet.</span>'}</p></div>${readOnlyMode ? "" : '<button type="button" class="text-button" data-edit>Edit</button>'}`;
+      card.querySelector("[data-edit]")?.addEventListener("click", () => openAttentionGrabberEditor(user, cohort, item, () => renderCohortDashboard(dialog, user, cohort, "attention")));
+      grid.appendChild(card);
+    });
+    if (!cohort.attentionGrabbers.length) grid.innerHTML = '<div class="empty-state-card"><strong>No Attention Grabbers yet.</strong><p>Add routines such as a clap sequence, call-and-response, countdown, or another Cohort-specific attention routine.</p></div>';
+    container.appendChild(grid);
+  }
+
+  function openAttentionGrabberEditor(user, cohort, item, onSaved) {
+    let dialog = $id("attentionGrabberEditorDialog");
+    if (!dialog) { dialog = document.createElement("dialog"); dialog.id = "attentionGrabberEditorDialog"; dialog.className = "modal"; document.body.appendChild(dialog); }
+    dialog.innerHTML = `<form class="modal-content"><div class="modal-heading"><div><p class="small-label">${escapeHTML(cohort.name)}</p><h2>${item ? "Edit" : "Add"} Attention Grabber</h2></div><button type="button" class="close-button" data-close>×</button></div><label class="form-field"><span>Name</span><input data-title required maxlength="90" value="${escapeHTML(item?.title || "")}" placeholder="Clap sequence" /></label><label class="form-field"><span>Description</span><textarea data-description rows="6" placeholder="Describe the action clearly enough to use it during a lesson.">${escapeHTML(item?.description || "")}</textarea></label><div class="modal-actions">${item ? '<button type="button" class="danger-text-button" data-delete>Delete</button>' : ""}<button type="button" class="secondary-button" data-close>Cancel</button><button type="submit" class="primary-button">Save Attention Grabber</button></div></form>`;
+    dialog.querySelectorAll("[data-close]").forEach(button => button.onclick = () => dialog.close());
+    dialog.querySelector("[data-delete]")?.addEventListener("click", () => {
+      cohort.attentionGrabbers = cohort.attentionGrabbers.filter(entry => entry.id !== item.id);
+      cohort.updatedAt = nowISO(); saveData(); dialog.close(); onSaved?.();
+    });
+    dialog.querySelector("form").onsubmit = event => {
+      event.preventDefault(); const title = clean(dialog.querySelector("[data-title]").value); if (!title) return;
+      if (item) { item.title = title; item.description = dialog.querySelector("[data-description]").value; item.updatedAt = nowISO(); }
+      else cohort.attentionGrabbers.push(normalizeAttentionGrabber({ title, description: dialog.querySelector("[data-description]").value }));
+      cohort.updatedAt = nowISO(); saveData(); dialog.close(); onSaved?.();
+    };
+    dialog.showModal();
+  }
+
+  function renderCohortCurriculumProgress(container, user, cohort, dialog) {
+    const linked = (user.classes || []).filter(item => item.cohortId === cohort.id);
+    const intro = document.createElement("div"); intro.className = "cohort-workspace-intro curriculum-progress-intro";
+    intro.innerHTML = `<div><p class="small-label">Across this Cohort</p><h3>Curriculum Progress</h3><p>Each Class keeps its own curriculum record. Progress here is a visual overview, not a binary completion list.</p></div>`;
+    container.appendChild(intro);
+    const grid = document.createElement("div"); grid.className = "cohort-progress-grid";
+    linked.forEach(teachingClass => {
+      const coverage = curriculumCoverage(user, teachingClass);
+      const card = document.createElement("button"); card.type = "button"; card.className = `cohort-progress-card ${teachingClass.archivedAt ? "archived-record" : ""}`; card.style.setProperty("--course-colour", teachingClass.colour || "#61B6FF");
+      card.innerHTML = `<header><div><small>${teachingClass.archivedAt ? "✓ Finished Class" : "Class"}</small><strong>${escapeHTML(teachingClass.name)}</strong></div><span>→</span></header><div class="cohort-progress-bars"><div><span><b>Planned</b><em>${coverage.total ? Math.round(coverage.planned.size / coverage.total * 100) : 0}%</em></span><i><u style="width:${coverage.total ? Math.round(coverage.planned.size / coverage.total * 100) : 0}%"></u></i></div><div><span><b>Introduced</b><em>${coverage.total ? Math.round(coverage.introduced.size / coverage.total * 100) : 0}%</em></span><i><u style="width:${coverage.total ? Math.round(coverage.introduced.size / coverage.total * 100) : 0}%"></u></i></div><div><span><b>Developing</b><em>${coverage.total ? Math.round(coverage.developing.size / coverage.total * 100) : 0}%</em></span><i><u style="width:${coverage.total ? Math.round(coverage.developing.size / coverage.total * 100) : 0}%"></u></i></div><div><span><b>Taught</b><em>${coverage.taughtPct}%</em></span><i><u style="width:${coverage.taughtPct}%"></u></i></div><div><span><b>Assessed</b><em>${coverage.assessedPct}%</em></span><i><u style="width:${coverage.assessedPct}%"></u></i></div></div><footer><span>${coverage.total} curriculum objectives</span><strong>${coverage.coveredPct}% taught + assessed</strong></footer>`;
+      card.onclick = () => { dialog.close(); openDashboard(teachingClass.id, "curriculum"); };
+      grid.appendChild(card);
+    });
+    if (!linked.length) grid.innerHTML = '<div class="empty-state-card"><strong>No Classes are linked yet.</strong><p>Create a Class and attach this Cohort to begin tracking curriculum progress.</p></div>';
+    container.appendChild(grid);
+  }
+
+  function renderCohortAssessments(container, user, cohort, dialog) {
+    const classIds = new Set((user.classes || []).filter(item => item.cohortId === cohort.id).map(item => item.id));
+    const items = (user.units || []).filter(unit => classIds.has(unit.classId)).flatMap(unit => (unit.workspace?.assessments || []).filter(a => a.status !== "draft").map(assessment => ({ unit, assessment, teachingClass: classById(user, unit.classId) }))).sort((a, b) => (a.assessment.date || "9999").localeCompare(b.assessment.date || "9999"));
+    const intro = document.createElement("div"); intro.className = "cohort-workspace-intro cohort-assessment-intro";
+    intro.innerHTML = `<div><p class="small-label">Assessment timeline</p><h3>${items.length} Assessment${items.length === 1 ? "" : "s"}</h3><p>Assessment information from every Class attached to this Cohort.</p></div>`; container.appendChild(intro);
+    const list = document.createElement("div"); list.className = "cohort-assessment-list";
+    items.forEach(({ unit, assessment, teachingClass }) => {
+      const button = document.createElement("button"); button.type = "button"; button.className = "cohort-assessment-row"; button.style.setProperty("--course-colour", teachingClass?.colour || unit.colour || "#61B6FF");
+      button.innerHTML = `<span class="assessment-kind ${escapeHTML(assessment.type || "")}">${escapeHTML(assessmentTypeLabel(assessment.type))}</span><div><strong>${escapeHTML(assessment.title)}</strong><small>${assessment.date ? escapeHTML(formatDate(assessment.date)) : "No date"} · ${escapeHTML(teachingClass?.name || classLabel(unit.classSpec))} · ${escapeHTML(unit.name)}</small></div><em>→</em>`;
+      button.onclick = () => { dialog.close(); activeUnitWorkspaceId = unit.id; activeUnitWorkspaceSection = "assessments"; workspaceAssessmentEditorId = assessment.id; renderUnitWorkspace(); };
+      list.appendChild(button);
+    });
+    if (!items.length) list.innerHTML = '<div class="empty-state-card">No assessments have been recorded for this Cohort yet.</div>';
+    container.appendChild(list);
+  }
+
   function renderInterestReminders(container, user, cohort, dialog) {
     user.interestReminders ||= [];
     if (!readOnlyMode) {
@@ -1297,6 +1385,7 @@
   window.TeacherHQClasses = {
     ensureClasses, ensureCohorts, classById, cohortById, cohortForClass, activeClasses, activeCohorts,
     recordsForClass, unitsForClass, curriculumCoverage, interestSummary, studentLabel,
+    attentionGrabbersForCohort: cohort => cohort?.attentionGrabbers || [],
     openManager, openDashboard, openCohortDashboard, populateBlockClassSelect, renderClassOverview,
     renderUnitOverviewGrouped, refresh, formatGrades, formatSubjects, classOptionSpecs
   };

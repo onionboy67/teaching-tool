@@ -505,7 +505,7 @@
 .agenda-empty-slot strong { margin: 5px 0 2px; color: #333338; }
 .agenda-part-card { padding: 16px; border: 1px solid #e1e1e6; border-radius: 19px; background: #fff; transition: opacity .15s ease, transform .15s ease; }
 .agenda-part-card.dragging { opacity: .5; transform: scale(.99); }
-.agenda-type-attention-grabber { box-shadow: inset 4px 0 0 #f15b8a; }
+.agenda-type-hook { box-shadow: inset 4px 0 0 #f15b8a; }
 .agenda-type-purpose { box-shadow: inset 4px 0 0 #7d6bd0; }
 .agenda-type-body { box-shadow: inset 4px 0 0 #4f9fe5; }
 .agenda-type-wrap-up { box-shadow: inset 4px 0 0 #48ae72; }
@@ -754,3 +754,9 @@
 .fine-arts-depth-3, .fine-arts-depth-4 { margin-left: 30px; }
 .lesson-fine-arts-rule { margin: 8px 12px 12px; padding: 10px 12px; border-radius: 12px; background: rgba(255,159,10,.1); color: #6e4a00; font-size: 12px; }
 .lesson-curriculum-status { display:inline-block; margin-top:5px; padding:3px 7px; border-radius:999px; background:rgba(0,0,0,.06); color:#6e6e73; text-transform:capitalize; }
+
+/* Cohort Attention Grabber inside a Lesson Hook */
+.hook-attention-grabber{display:grid;gap:6px;margin-top:10px;padding:10px;border:1px solid rgba(241,91,138,.18);background:rgba(241,91,138,.05);border-radius:12px}.hook-attention-grabber strong{font-size:11px}.hook-attention-grabber strong small{font-weight:500;color:#777}.hook-attention-grabber select{width:100%;border:1px solid rgba(29,29,31,.13);border-radius:9px;background:#fff;padding:8px}.hook-attention-grabber>small{color:#6e6e73;line-height:1.4}
+/* Persistent curriculum notes surfaced whenever their objective is selected. */
+.selected-curriculum-note-summary{margin:10px 0;border:1px solid rgba(211,173,55,.28);background:#fffaf0;border-radius:13px;padding:10px}.selected-note-summary-heading{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:7px}.selected-note-summary-heading strong{font-size:11px}.selected-note-summary-heading small{font-size:9px;color:#806b29}.selected-note-summary-list{display:grid;gap:6px}.selected-note-summary-list article{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:start;border-radius:9px;background:#fff;padding:7px 8px}.selected-note-summary-list p{margin:0;font-size:10px;line-height:1.45;white-space:pre-wrap;color:#514721}.selected-note-summary-list button{font-size:9px;white-space:nowrap}
+@media(max-width:680px){.selected-note-summary-list article{grid-template-columns:1fr}.selected-note-summary-list button{justify-self:start}}

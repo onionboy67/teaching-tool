@@ -69,40 +69,188 @@
   }
 
   function renderNotificationDock(user) {
-    const dock=$id("notificationDock"); if(!dock)return; const items=notificationItems(user); document.querySelectorAll(".legacy-notice,#reflectionAlert").forEach(el=>el.classList.add("hidden"));
-    if(!items.length){dock.classList.add("hidden");dock.innerHTML="";return;} dock.classList.remove("hidden"); dock.innerHTML=`<button type="button" class="notification-summary-button" aria-expanded="false"><span class="notification-bell">🔔</span><strong>Attention required</strong><small>${escapeHTML(items[0].title)}</small><span class="notification-chevron">⌄</span></button><div class="notification-drawer hidden"></div>`;
-    const drawer=dock.querySelector(".notification-drawer"); items.forEach(item=>{const row=document.createElement(item.action?"button":"article");if(item.action)row.type="button";row.className=`notification-row notification-${item.type}`;row.innerHTML=`<span class="notification-icon">${item.icon}</span><div><strong>${escapeHTML(item.title)}</strong>${item.detail?`<small>${escapeHTML(item.detail)}</small>`:""}</div>${item.action?'<em>→</em>':''}`;if(item.action)row.onclick=item.action;drawer.appendChild(row);});
-    const button=dock.querySelector(".notification-summary-button");button.onclick=()=>{const open=button.getAttribute("aria-expanded")==="true";button.setAttribute("aria-expanded",String(!open));drawer.classList.toggle("hidden",open);dock.classList.toggle("open",!open);};
+    const dock = $id("notificationDock"); if (!dock) return;
+    const items = notificationItems(user);
+    document.querySelectorAll(".legacy-notice,#reflectionAlert").forEach(el => el.classList.add("hidden"));
+    dock.classList.remove("hidden");
+    dock.innerHTML = `<div class="notification-hub-summary"><strong>${items.length ? `${items.length} open` : "All clear"}</strong><small>${items.length ? "Select an item to act on it." : "Nothing needs your attention right now."}</small></div><div class="notification-drawer"></div>`;
+    const drawer = dock.querySelector(".notification-drawer");
+    items.forEach(item => {
+      const row = document.createElement(item.action ? "button" : "article");
+      if (item.action) row.type = "button";
+      row.className = `notification-row notification-${item.type}`;
+      row.innerHTML = `<span class="notification-icon">${item.icon}</span><div><strong>${escapeHTML(item.title)}</strong>${item.detail ? `<small>${escapeHTML(item.detail)}</small>` : ""}</div>${item.action ? '<em>→</em>' : ''}`;
+      if (item.action) row.onclick = item.action;
+      drawer.appendChild(row);
+    });
   }
 
+
   function renderOverviewCalendar() {
-    const grid=$id("calendarGrid"), title=$id("monthTitle"), user=getActiveUser();if(!grid||!title||!user)return;
-    grid.innerHTML="";const year=visibleDate.getFullYear(),month=visibleDate.getMonth(),today=getLocalDateKey();title.textContent=visibleDate.toLocaleDateString("en-CA",{month:"long",year:"numeric"});
-    ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach((d,i)=>{const h=document.createElement("div");h.className=`weekday ${i===0||i===6?"weekend-heading":""}`;h.textContent=d;grid.appendChild(h);});
-    const first=new Date(year,month,1).getDay(), days=new Date(year,month+1,0).getDate();for(let i=0;i<first;i++){const e=document.createElement("div");e.className="day empty";grid.appendChild(e);}
-    for(let d=1;d<=days;d++){
-      const date=new Date(year,month,d), key=getLocalDateKey(date);const cell=document.createElement("div");cell.className="day overview-rich-day";cell.dataset.dateKey=key;if([0,6].includes(date.getDay()))cell.classList.add("weekend");if(key<today)cell.classList.add("past");if(key===today)cell.classList.add("today");cell.innerHTML=`<span class="day-number">${d}</span><div class="overview-day-events"></div>`;const events=cell.querySelector("div");
-      const exception=getExceptionForDate(user,key);if(exception){cell.classList.add("no-school-day",`no-school-${exception.type.toLowerCase().replaceAll(" ","-")}`);events.insertAdjacentHTML("beforeend",`<span class="overview-day-off"><strong>${escapeHTML(exception.label||exception.type)}</strong><small>${escapeHTML(exception.type)}</small></span>`);} else {
-        getOccurrencesForDate(date,user).filter(o=>o.block.blockType==="Instructional Time").forEach(occ=>{const linked=lessonForOccurrence(user,occ);const archived=occurrenceArchived(user,occ);const planned=Boolean(archived || occ.planned || linked?.unit?.workspace?.lessonPlans?.[linked.lesson.id]?.complete);const colour=courseColour(user,occ.block);const chip=document.createElement("button");chip.type="button";chip.className=`overview-instruction-chip ${planned?"planned":"needs-plan"} ${archived?"archived":""} ${occ.conflict&&!archived?"conflict":""}`;chip.style.setProperty("--course-colour",colour);chip.style.setProperty("--course-text",contrastText(colour));chip.textContent=instructionalLabel(user,occ);chip.title=`${formatTime(occ.block.startTime)}–${formatTime(occ.block.endTime)} · ${archived?"Finished / archived":planned?"Planned":"Lesson needs to be created/planned"}`;chip.onclick=e=>{e.stopPropagation();if(linked)openLessonPlaceholder(linked.unit.id,linked.lesson.id);else openDailyView(key);};events.appendChild(chip);});
+    const grid = $id("calendarGrid"), title = $id("monthTitle"), user = getActiveUser();
+    if (!grid || !title || !user) return;
+    grid.innerHTML = "";
+    const year = visibleDate.getFullYear(), month = visibleDate.getMonth(), today = getLocalDateKey();
+    title.textContent = visibleDate.toLocaleDateString("en-CA", { month: "long", year: "numeric" });
+    ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((label, index) => {
+      const heading = document.createElement("div");
+      heading.className = `weekday ${index === 0 || index === 6 ? "weekend-heading" : ""}`;
+      heading.textContent = label;
+      grid.appendChild(heading);
+    });
+    const first = new Date(year, month, 1).getDay(), days = new Date(year, month + 1, 0).getDate();
+    for (let i = 0; i < first; i += 1) {
+      const empty = document.createElement("div"); empty.className = "day empty"; grid.appendChild(empty);
+    }
+    for (let day = 1; day <= days; day += 1) {
+      const date = new Date(year, month, day), key = getLocalDateKey(date);
+      const cell = document.createElement("div");
+      cell.className = "day overview-rich-day";
+      cell.dataset.dateKey = key;
+      if ([0, 6].includes(date.getDay())) cell.classList.add("weekend");
+      if (key < today) cell.classList.add("past");
+      if (key === today) cell.classList.add("today");
+      cell.innerHTML = `<span class="day-number">${day}</span><div class="overview-day-events"></div>`;
+      const events = cell.querySelector(".overview-day-events");
+      const exception = getExceptionForDate(user, key);
+      const subDay = exception?.type === "Sub Day";
+      const noSchool = Boolean(exception && !subDay);
+
+      if (exception) {
+        if (subDay) {
+          cell.classList.add("sub-day");
+          events.insertAdjacentHTML("beforeend", `<span class="overview-sub-day"><strong>SUB</strong><small>${escapeHTML(exception.label || "Sub Day")}</small></span>`);
+        } else {
+          cell.classList.add("no-school-day", `no-school-${exception.type.toLowerCase().replaceAll(" ", "-")}`);
+          events.insertAdjacentHTML("beforeend", `<span class="overview-day-off"><strong>${escapeHTML(exception.label || exception.type)}</strong><small>${escapeHTML(exception.type)}</small></span>`);
+        }
       }
-      getFieldTripsForDate(user,key).forEach(({unit,trip})=>{const c=hex(unit.colour,"#FF7043");const chip=document.createElement("button");chip.type="button";chip.className="overview-trip-chip";chip.style.setProperty("--trip-colour",c);chip.style.setProperty("--trip-text",contrastText(c));chip.textContent=`🚌 ${trip.title}`;chip.onclick=e=>{e.stopPropagation();activeUnitWorkspaceId=unit.id;activeUnitWorkspaceSection="fieldTrips";workspaceFieldTripEditorId=trip.id;renderUnitWorkspace();};events.appendChild(chip);});
-      cell.onclick=e=>{e.stopPropagation();openDailyView(key);};grid.appendChild(cell);
+
+      if (!noSchool) {
+        getOccurrencesForDate(date, user).filter(item => item.block.blockType === "Instructional Time").forEach(occ => {
+          const linked = lessonForOccurrence(user, occ);
+          const archived = occurrenceArchived(user, occ);
+          const planned = Boolean(archived || occ.planned || linked?.unit?.workspace?.lessonPlans?.[linked.lesson.id]?.complete);
+          const colour = courseColour(user, occ.block);
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = `overview-instruction-chip ${planned ? "planned" : "needs-plan"} ${archived ? "archived" : ""} ${occ.conflict && !archived ? "conflict" : ""}`;
+          chip.style.setProperty("--course-colour", colour);
+          chip.style.setProperty("--course-text", contrastText(colour));
+          chip.textContent = instructionalLabel(user, occ);
+          chip.title = `${formatTime(occ.block.startTime)}–${formatTime(occ.block.endTime)} · ${archived ? "Finished / archived" : planned ? "Planned" : "Lesson needs to be created/planned"}`;
+          chip.onclick = event => {
+            event.stopPropagation();
+            if (linked) openLessonPlaceholder(linked.unit.id, linked.lesson.id);
+            else openDailyView(key);
+          };
+          events.appendChild(chip);
+        });
+      }
+
+      getFieldTripsForDate(user, key).forEach(({ unit, trip }) => {
+        const colour = hex(unit.colour, "#FF7043");
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "overview-trip-chip";
+        chip.style.setProperty("--trip-colour", colour);
+        chip.style.setProperty("--trip-text", contrastText(colour));
+        chip.textContent = `🚌 ${trip.title}`;
+        chip.onclick = event => {
+          event.stopPropagation();
+          activeUnitWorkspaceId = unit.id; activeUnitWorkspaceSection = "fieldTrips"; workspaceFieldTripEditorId = trip.id; renderUnitWorkspace();
+        };
+        events.appendChild(chip);
+      });
+
+      (user.units || []).forEach(unit => (unit.workspace?.assessments || [])
+        .filter(assessment => assessment.status !== "draft" && assessment.date === key)
+        .forEach(assessment => {
+          const chip = document.createElement("button"); chip.type = "button"; chip.className = "overview-assessment-chip";
+          chip.textContent = `✓ ${assessment.title}`;
+          chip.onclick = event => {
+            event.stopPropagation(); activeUnitWorkspaceId = unit.id; activeUnitWorkspaceSection = "assessments"; workspaceAssessmentEditorId = assessment.id; renderUnitWorkspace();
+          };
+          events.appendChild(chip);
+        }));
+
+      const dailyCustom = user.dailyRecords?.[key]?.events || [];
+      dailyCustom.slice(0, 2).forEach(item => {
+        const chip = document.createElement("button"); chip.type = "button"; chip.className = "overview-custom-event-chip";
+        chip.textContent = `${item.type === "Block" ? "▥" : "•"} ${item.title}`;
+        chip.onclick = event => { event.stopPropagation(); openDailyItemEditor(key, item); };
+        events.appendChild(chip);
+      });
+      if (dailyCustom.length > 2) events.insertAdjacentHTML("beforeend", `<small class="overview-more-events">+${dailyCustom.length - 2} more</small>`);
+
+      cell.onclick = event => { event.stopPropagation(); openDailyView(key); };
+      grid.appendChild(cell);
     }
     renderNotificationDock(user);
   }
 
   function createDailyDialog() {
-    let dialog=$id("dailyViewDialog");if(dialog)return dialog;dialog=document.createElement("dialog");dialog.id="dailyViewDialog";dialog.className="modal extra-large-modal daily-view-dialog";dialog.innerHTML=`<div class="modal-content"><div class="modal-heading"><div><p class="small-label">Daily View</p><h2 data-daily-title></h2><p data-daily-meta class="section-subtitle"></p></div><button class="close-button" type="button" data-daily-close>×</button></div><div data-daily-alerts class="daily-alerts"></div><div class="daily-view-actions"><button type="button" class="secondary-button" data-daily-print-view>View Print-Friendly Version</button><button type="button" class="secondary-button" data-daily-download>Download Print-Friendly Version</button></div><div data-daily-content></div><section class="daily-reflection-card"><div><p class="small-label">Optional</p><h3>Daily Reflection</h3><p class="section-subtitle">A day-level reflection is separate from individual Lesson reflections.</p></div><textarea data-daily-reflection rows="7" placeholder="What should you remember from today?"></textarea><small data-daily-saved></small></section></div>`;document.body.appendChild(dialog);dialog.querySelector("[data-daily-close]").onclick=()=>dialog.close();dialog.addEventListener("click",e=>{if(e.target===dialog)dialog.close();});return dialog;
+    let dialog = $id("dailyViewDialog");
+    if (dialog) return dialog;
+    dialog = document.createElement("dialog");
+    dialog.id = "dailyViewDialog";
+    dialog.className = "modal extra-large-modal daily-view-dialog";
+    dialog.innerHTML = `<div class="modal-content">
+      <div class="modal-heading"><div><p class="small-label">Daily View</p><h2 data-daily-title></h2><p data-daily-meta class="section-subtitle"></p></div><button class="close-button" type="button" data-daily-close>×</button></div>
+      <div data-daily-alerts class="daily-alerts"></div>
+      <div class="daily-create-actions edit-only">
+        <button type="button" class="primary-button" data-daily-add-lesson>+ Lesson</button>
+        <button type="button" class="secondary-button" data-daily-add-event>+ Event</button>
+        <button type="button" class="secondary-button" data-daily-add-block>+ Block</button>
+      </div>
+      <div class="daily-view-actions"><button type="button" class="secondary-button" data-daily-print-view>View Print-Friendly Version</button><button type="button" class="secondary-button" data-daily-download>Download Print-Friendly Version</button></div>
+      <div data-daily-content></div>
+      <section class="daily-reflection-card"><div><p class="small-label">Optional</p><h3>Daily Reflection</h3><p class="section-subtitle">A day-level reflection is separate from individual Lesson reflections.</p></div><textarea data-daily-reflection rows="7" placeholder="What should you remember from today?"></textarea><small data-daily-saved></small></section>
+    </div>`;
+    document.body.appendChild(dialog);
+    dialog.querySelector("[data-daily-close]").onclick = () => dialog.close();
+    dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); });
+    return dialog;
   }
 
-  function dayData(user,dateKey){const date=parseLocalDate(dateKey);const occurrences=getOccurrencesForDate(date,user);const trips=getFieldTripsForDate(user,dateKey);const exception=getExceptionForDate(user,dateKey);const assessmentItems=[];(user.units||[]).forEach(unit=>(unit.workspace?.assessments||[]).filter(a=>a.status!=="draft"&&a.date===dateKey).forEach(assessment=>assessmentItems.push({unit,assessment})));const milestones=[];(user.units||[]).forEach(unit=>{const plans=unit.workspace?.lessonPlans||{};Object.entries(plans).forEach(([lessonId,plan])=>(plan.assessments?.links||[]).forEach(link=>{const assessment=(unit.workspace?.assessments||[]).find(a=>a.id===link.assessmentId);if(!assessment)return;if(link.toStudentsDate===dateKey)milestones.push({unit,assessment,direction:"TO"});if(link.fromStudentsDate===dateKey)milestones.push({unit,assessment,direction:"FROM"});}));});return{date,occurrences,trips,exception,assessmentItems,milestones};}
+  function dayData(user, dateKey) {
+    const date = parseLocalDate(dateKey);
+    const occurrences = getOccurrencesForDate(date, user);
+    const trips = getFieldTripsForDate(user, dateKey);
+    const exception = getExceptionForDate(user, dateKey);
+    const customEvents = Array.isArray(user.dailyRecords?.[dateKey]?.events) ? user.dailyRecords[dateKey].events : [];
+    const assessmentItems = [];
+    (user.units || []).forEach(unit => (unit.workspace?.assessments || []).filter(a => a.status !== "draft" && a.date === dateKey).forEach(assessment => assessmentItems.push({ unit, assessment })));
+    const milestones = [];
+    (user.units || []).forEach(unit => {
+      const plans = unit.workspace?.lessonPlans || {};
+      Object.entries(plans).forEach(([lessonId, plan]) => (plan.assessments?.links || []).forEach(link => {
+        const assessment = (unit.workspace?.assessments || []).find(a => a.id === link.assessmentId);
+        if (!assessment) return;
+        if (link.toStudentsDate === dateKey) milestones.push({ unit, assessment, direction: "TO" });
+        if (link.fromStudentsDate === dateKey) milestones.push({ unit, assessment, direction: "FROM" });
+      }));
+    });
+    return { date, occurrences, trips, exception, customEvents, assessmentItems, milestones };
+  }
 
-  function dailyAlertsFor(user,dateKey){const alerts=[];const data=dayData(user,dateKey);const unplanned=data.occurrences.filter(o=>o.block.blockType==="Instructional Time"&&!o.planned&&!occurrenceArchived(user,o)).length;if(unplanned)alerts.push(`${unplanned} instructional block${unplanned===1?"":"s"} still need planning.`);const conflicts=getConflictPairCount(data.occurrences.filter(o=>!occurrenceArchived(user,o)));if(conflicts)alerts.push(`${conflicts} schedule conflict${conflicts===1?"":"s"} on this date.`);const weekly=notificationItems(user).map(item=>item.title);return{alerts,weekly};}
+  function dailyAlertsFor(user, dateKey) {
+    const alerts = [], data = dayData(user, dateKey);
+    const unplanned = data.occurrences.filter(o => o.block.blockType === "Instructional Time" && !o.planned && !occurrenceArchived(user, o)).length;
+    if (unplanned) alerts.push(`${unplanned} instructional block${unplanned === 1 ? "" : "s"} still need planning.`);
+    const conflicts = getConflictPairCount(data.occurrences.filter(o => !occurrenceArchived(user, o)));
+    if (conflicts) alerts.push(`${conflicts} schedule conflict${conflicts === 1 ? "" : "s"} on this date.`);
+    const weekly = notificationItems(user).map(item => item.title);
+    return { alerts, weekly };
+  }
 
   function dailyContentHTML(user, dateKey, print = false) {
     const data = dayData(user, dateKey);
     let html = "";
-    if (data.exception) html += `<div class="daily-day-off"><strong>${escapeHTML(data.exception.label || data.exception.type)}</strong><span>${escapeHTML(data.exception.type)}${data.exception.description ? ` · ${escapeHTML(data.exception.description)}` : ""}</span></div>`;
+    if (data.exception) {
+      const sub = data.exception.type === "Sub Day";
+      html += `<div class="daily-day-off ${sub ? "daily-sub-day" : ""}"><strong>${sub ? "SUB · " : ""}${escapeHTML(data.exception.label || data.exception.type)}</strong><span>${escapeHTML(data.exception.type)}${data.exception.description ? ` · ${escapeHTML(data.exception.description)}` : ""}</span></div>`;
+    }
     const rows = [];
     data.occurrences.forEach(occ => {
       const block = occ.block, linked = lessonForOccurrence(user, occ);
@@ -112,19 +260,27 @@
         const detail = linked ? linked.unit.name : "Instructional Time";
         rows.push({
           time: block.startTime,
-          html: `<article class="daily-event instructional ${archived ? "archived" : occ.planned ? "planned" : "unplanned"}" style="--event-colour:${courseColour(user, block)}"><time>${escapeHTML(formatTime(block.startTime))}</time><div><strong>${escapeHTML(`${archived ? "✓ " : ""}${title}`)}</strong><span>${escapeHTML(detail)}${archived ? " · finished / archived" : !occ.planned ? " · needs planning" : ""}</span></div></article>`
+          html: linked
+            ? `<button type="button" class="daily-event daily-event-link instructional ${archived ? "archived" : occ.planned ? "planned" : "unplanned"}" style="--event-colour:${courseColour(user, block)}" data-open-lesson data-unit-id="${escapeHTML(linked.unit.id)}" data-lesson-id="${escapeHTML(linked.lesson.id)}"><time>${escapeHTML(formatTime(block.startTime))}</time><div><strong>${escapeHTML(`${archived ? "✓ " : ""}${title}`)}</strong><span>${escapeHTML(detail)}${archived ? " · finished / archived" : !occ.planned ? " · needs planning" : ""}</span></div><em>→</em></button>`
+            : `<article class="daily-event instructional ${archived ? "archived" : occ.planned ? "planned" : "unplanned"}" style="--event-colour:${courseColour(user, block)}"><time>${escapeHTML(formatTime(block.startTime))}</time><div><strong>${escapeHTML(`${archived ? "✓ " : ""}${title}`)}</strong><span>${escapeHTML(detail)}${archived ? " · finished / archived" : !occ.planned ? " · needs planning" : ""}</span></div></article>`
         });
       } else {
         rows.push({ time: block.startTime, html: `<article class="daily-event noninstructional"><time>${escapeHTML(formatTime(block.startTime))}</time><div><strong>${escapeHTML(block.label || block.blockType)}</strong><span>${escapeHTML(block.blockType)}</span></div></article>` });
       }
     });
+    data.customEvents.forEach(item => {
+      rows.push({
+        time: item.startTime || "12:00",
+        html: `<button type="button" class="daily-event daily-event-link custom-daily-event" data-custom-event-id="${escapeHTML(item.id)}"><time>${escapeHTML(item.startTime ? formatTime(item.startTime) : item.type === "Block" ? "▥" : "•")}</time><div><strong>${escapeHTML(item.title)}</strong><span>${escapeHTML(item.type || "Event")}${item.endTime ? ` · ${escapeHTML(formatTime(item.endTime))}` : ""}${item.notes ? ` · ${escapeHTML(item.notes)}` : ""}</span></div><em>→</em></button>`
+      });
+    });
     data.trips.forEach(({ unit, trip }) => {
       const archived = Boolean(window.TeacherHQClasses?.classById?.(user, unit.classId)?.archivedAt);
-      rows.push({ time: "12:00", html: `<article class="daily-event field-trip ${archived ? "archived" : ""}"><time>🚌</time><div><strong>${archived ? "✓ " : ""}Field Trip — ${escapeHTML(trip.title)}</strong><span>${escapeHTML(unit.name)}${trip.location ? ` · ${escapeHTML(trip.location)}` : ""}</span></div></article>` });
+      rows.push({ time: "12:00", html: `<button type="button" class="daily-event daily-event-link field-trip ${archived ? "archived" : ""}" data-open-field-trip data-unit-id="${escapeHTML(unit.id)}" data-trip-id="${escapeHTML(trip.id)}"><time>🚌</time><div><strong>${archived ? "✓ " : ""}Field Trip — ${escapeHTML(trip.title)}</strong><span>${escapeHTML(unit.name)}${trip.location ? ` · ${escapeHTML(trip.location)}` : ""}</span></div><em>→</em></button>` });
     });
     data.assessmentItems.forEach(({ unit, assessment }) => {
       const archived = Boolean(window.TeacherHQClasses?.classById?.(user, unit.classId)?.archivedAt);
-      rows.push({ time: "23:50", html: `<article class="daily-event assessment ${archived ? "archived" : ""}"><time>✓</time><div><strong>${archived ? "✓ " : ""}${escapeHTML(assessment.title)}</strong><span>${escapeHTML(assessmentTypeLabel(assessment.type))} · ${escapeHTML(unit.name)}</span></div></article>` });
+      rows.push({ time: "23:50", html: `<button type="button" class="daily-event daily-event-link assessment ${archived ? "archived" : ""}" data-open-assessment data-unit-id="${escapeHTML(unit.id)}" data-assessment-id="${escapeHTML(assessment.id)}"><time>✓</time><div><strong>${archived ? "✓ " : ""}${escapeHTML(assessment.title)}</strong><span>${escapeHTML(assessmentTypeLabel(assessment.type))} · ${escapeHTML(unit.name)}</span></div><em>→</em></button>` });
     });
     data.milestones.forEach(({ unit, assessment, direction }) => rows.push({ time: direction === "TO" ? "07:00" : "23:40", html: `<article class="daily-event assessment-milestone"><time>${direction}</time><div><strong>${escapeHTML(assessment.title)}</strong><span>${direction === "TO" ? "To students" : "From students"} · ${escapeHTML(unit.name)}</span></div></article>` }));
     rows.sort((a, b) => a.time.localeCompare(b.time));
@@ -134,7 +290,73 @@
     return html;
   }
 
-  function openDailyView(dateKey){const user=getActiveUser();if(!user)return;user.dailyRecords ||= {};user.dailyRecords[dateKey] ||= {reflection:"",updatedAt:""};const dialog=createDailyDialog();dialog.dataset.dateKey=dateKey;dialog.querySelector("[data-daily-title]").textContent=parseLocalDate(dateKey).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"});dialog.querySelector("[data-daily-meta]").textContent="Daily timetable · instructional and non-instructional events";const alerts=dailyAlertsFor(user,dateKey);dialog.querySelector("[data-daily-alerts]").innerHTML=`${alerts.alerts.length?`<div class="daily-notice-group"><strong>For this day</strong>${alerts.alerts.map(a=>`<span>• ${escapeHTML(a)}</span>`).join("")}</div>`:""}${alerts.weekly.length?`<details><summary>This week / general notifications</summary>${alerts.weekly.map(a=>`<span>• ${escapeHTML(a)}</span>`).join("")}</details>`:""}`;dialog.querySelector("[data-daily-content]").innerHTML=dailyContentHTML(user,dateKey);const reflection=dialog.querySelector("[data-daily-reflection]");reflection.value=user.dailyRecords[dateKey].reflection||"";reflection.disabled=readOnlyMode;let timer;reflection.oninput=()=>{if(readOnlyMode)return;clearTimeout(timer);timer=setTimeout(()=>{user.dailyRecords[dateKey].reflection=reflection.value;user.dailyRecords[dateKey].updatedAt=new Date().toISOString();saveData();dialog.querySelector("[data-daily-saved]").textContent="Saved";},250);};dialog.querySelector("[data-daily-print-view]").onclick=()=>openDailyPrint(dateKey,false);dialog.querySelector("[data-daily-download]").onclick=()=>openDailyPrint(dateKey,true);dialog.showModal();}
+  function openDailyItemEditor(dateKey, existing = null, type = "Event") {
+    const user = getActiveUser(); if (!user || readOnlyMode) return;
+    user.dailyRecords ||= {}; user.dailyRecords[dateKey] ||= { reflection: "", updatedAt: "", events: [] };
+    user.dailyRecords[dateKey].events ||= [];
+    let dialog = $id("dailyItemEditorDialog");
+    if (!dialog) { dialog = document.createElement("dialog"); dialog.id = "dailyItemEditorDialog"; dialog.className = "modal"; document.body.appendChild(dialog); }
+    const itemType = existing?.type || type;
+    dialog.innerHTML = `<form class="modal-content"><div class="modal-heading"><div><p class="small-label">${escapeHTML(formatDate(dateKey))}</p><h2>${existing ? "Edit" : "Add"} ${escapeHTML(itemType)}</h2></div><button type="button" class="close-button" data-close>×</button></div><label class="form-field"><span>Title</span><input data-title required maxlength="120" value="${escapeHTML(existing?.title || "")}" placeholder="${itemType === "Block" ? "Assembly, library block, special activity…" : "Meeting, event, reminder…"}" /></label><div class="form-grid two-column-grid"><label class="form-field"><span>Start Time <small>optional</small></span><input data-start type="time" value="${escapeHTML(existing?.startTime || "")}" /></label><label class="form-field"><span>End Time <small>optional</small></span><input data-end type="time" value="${escapeHTML(existing?.endTime || "")}" /></label></div><label class="form-field"><span>Notes <small>optional</small></span><textarea data-notes rows="3">${escapeHTML(existing?.notes || "")}</textarea></label><div class="modal-actions">${existing ? '<button type="button" class="danger-text-button" data-delete>Delete</button>' : ""}<button type="button" class="secondary-button" data-close>Cancel</button><button type="submit" class="primary-button">Save ${escapeHTML(itemType)}</button></div></form>`;
+    dialog.querySelectorAll("[data-close]").forEach(button => button.onclick = () => dialog.close());
+    dialog.querySelector("[data-delete]")?.addEventListener("click", () => {
+      user.dailyRecords[dateKey].events = user.dailyRecords[dateKey].events.filter(item => item.id !== existing.id);
+      user.dailyRecords[dateKey].updatedAt = new Date().toISOString(); saveData(); dialog.close(); openDailyView(dateKey); renderOverviewCalendar();
+    });
+    dialog.querySelector("form").onsubmit = event => {
+      event.preventDefault();
+      const title = dialog.querySelector("[data-title]").value.trim(); if (!title) return;
+      const payload = {
+        id: existing?.id || makeId("daily-event"), type: itemType, title,
+        startTime: dialog.querySelector("[data-start]").value,
+        endTime: dialog.querySelector("[data-end]").value,
+        notes: dialog.querySelector("[data-notes]").value.trim(),
+        createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString()
+      };
+      const index = user.dailyRecords[dateKey].events.findIndex(item => item.id === payload.id);
+      if (index >= 0) user.dailyRecords[dateKey].events[index] = payload; else user.dailyRecords[dateKey].events.push(payload);
+      user.dailyRecords[dateKey].updatedAt = new Date().toISOString(); saveData(); dialog.close(); openDailyView(dateKey); renderOverviewCalendar();
+    };
+    dialog.showModal();
+  }
+
+  function bindDailyContentActions(dialog, user, dateKey) {
+    dialog.querySelectorAll("[data-open-lesson]").forEach(button => button.onclick = () => {
+      dialog.close(); openLessonPlaceholder(button.dataset.unitId, button.dataset.lessonId);
+    });
+    dialog.querySelectorAll("[data-open-field-trip]").forEach(button => button.onclick = () => {
+      dialog.close(); activeUnitWorkspaceId = button.dataset.unitId; activeUnitWorkspaceSection = "fieldTrips"; workspaceFieldTripEditorId = button.dataset.tripId; renderUnitWorkspace();
+    });
+    dialog.querySelectorAll("[data-open-assessment]").forEach(button => button.onclick = () => {
+      dialog.close(); activeUnitWorkspaceId = button.dataset.unitId; activeUnitWorkspaceSection = "assessments"; workspaceAssessmentEditorId = button.dataset.assessmentId; renderUnitWorkspace();
+    });
+    dialog.querySelectorAll("[data-custom-event-id]").forEach(button => button.onclick = () => {
+      const item = user.dailyRecords?.[dateKey]?.events?.find(entry => entry.id === button.dataset.customEventId); if (item) openDailyItemEditor(dateKey, item);
+    });
+  }
+
+  function openDailyView(dateKey) {
+    const user = getActiveUser(); if (!user) return;
+    user.dailyRecords ||= {};
+    user.dailyRecords[dateKey] ||= { reflection: "", updatedAt: "", events: [] };
+    user.dailyRecords[dateKey].events ||= [];
+    const dialog = createDailyDialog(); dialog.dataset.dateKey = dateKey;
+    dialog.querySelector("[data-daily-title]").textContent = parseLocalDate(dateKey).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    dialog.querySelector("[data-daily-meta]").textContent = "Daily timetable · lessons, events, blocks, assessments and reflection";
+    const alerts = dailyAlertsFor(user, dateKey);
+    dialog.querySelector("[data-daily-alerts]").innerHTML = `${alerts.alerts.length ? `<div class="daily-notice-group"><strong>For this day</strong>${alerts.alerts.map(a => `<span>• ${escapeHTML(a)}</span>`).join("")}</div>` : ""}${alerts.weekly.length ? `<details><summary>This week / general notifications</summary>${alerts.weekly.map(a => `<span>• ${escapeHTML(a)}</span>`).join("")}</details>` : ""}`;
+    dialog.querySelector("[data-daily-content]").innerHTML = dailyContentHTML(user, dateKey);
+    bindDailyContentActions(dialog, user, dateKey);
+    const reflection = dialog.querySelector("[data-daily-reflection]"); reflection.value = user.dailyRecords[dateKey].reflection || ""; reflection.disabled = readOnlyMode;
+    let timer;
+    reflection.oninput = () => { if (readOnlyMode) return; clearTimeout(timer); timer = setTimeout(() => { user.dailyRecords[dateKey].reflection = reflection.value; user.dailyRecords[dateKey].updatedAt = new Date().toISOString(); saveData(); dialog.querySelector("[data-daily-saved]").textContent = "Saved"; }, 250); };
+    dialog.querySelector("[data-daily-add-lesson]").onclick = () => { dialog.close(); window.TeacherHQMega?.openStandaloneLesson?.(dateKey); };
+    dialog.querySelector("[data-daily-add-event]").onclick = () => openDailyItemEditor(dateKey, null, "Event");
+    dialog.querySelector("[data-daily-add-block]").onclick = () => openDailyItemEditor(dateKey, null, "Block");
+    dialog.querySelector("[data-daily-print-view]").onclick = () => openDailyPrint(dateKey, false);
+    dialog.querySelector("[data-daily-download]").onclick = () => openDailyPrint(dateKey, true);
+    dialog.showModal();
+  }
 
   function dailyPrintHTML(user,dateKey){const title=parseLocalDate(dateKey).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"});return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(title)} · Teacher HQ</title><style>@page{size:letter;margin:.55in}body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17171a}header{border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px}h1{font-size:28px;margin:0}header p{margin:5px 0 0;color:#666}.daily-timeline{display:grid;gap:8px}.daily-event{display:grid;grid-template-columns:70px 1fr;gap:10px;border:1px solid #ddd;border-radius:10px;padding:10px}.daily-event time{font-weight:800}.daily-event span{display:block;color:#555;font-size:12px}.noninstructional{font-size:12px;border-style:dashed}.field-trip{border:2px solid #f2994a}.print-daily-reflection{margin-top:28px;border:1px solid #bbb;border-radius:12px;padding:14px;min-height:180px}.print-daily-reflection h3{margin-top:0}</style></head><body><header><h1>${escapeHTML(title)}</h1><p>Teacher HQ · Daily Timetable</p></header>${dailyContentHTML(user,dateKey,true)}</body></html>`;}
   function openDailyPrint(dateKey,download){const user=getActiveUser();if(!user)return;const htmlText=dailyPrintHTML(user,dateKey);if(download){const blob=new Blob([htmlText],{type:"text/html"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`TeacherHQ_Daily_${dateKey}.html`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);return;}const win=window.open("","_blank");if(!win)return alert("Please allow pop-ups for Teacher HQ.");win.document.write(htmlText);win.document.close();}

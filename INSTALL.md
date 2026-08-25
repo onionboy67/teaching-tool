@@ -1,50 +1,39 @@
-# Teacher HQ — Cohort Architecture Update Installation
+# Teacher HQ — Installation & Smoke Test
 
-This release is a full-file replacement package containing **28 files**.
+## Install on GitHub Pages
+This package is a full replacement set. Use the same GitHub upload workflow that has been reliable for Teacher HQ:
 
-## Before replacing files
-1. Keep a fresh Teacher HQ backup from the currently working site if there is any data you want to retain.
-2. Keep the backup outside the GitHub repository.
-3. Existing test data is not a design constraint for this release; migration helpers remain for older Class records where practical.
-
-## Install
-Upload/replace **all 28 files** from this release in the repository root. Keep every filename exactly as provided.
-
-The release includes the existing curriculum/data modules plus the updated application files. The main feature changes are concentrated in:
-- `classes.js`
-- `app.js`
-- `lesson-planner.js`
-- `calendar-tools.js`
-- `calendar-page.js`
-- `trash.js`
-- `mega-features.css`
-- `lesson-planner.css`
-- `index.html`
-- `calendar.html`
-
-Asset cache-busting is set to `?v=16`.
+1. Extract the ZIP locally.
+2. Open the `onionboy67/teaching-tool` repository on github.com.
+3. Choose **Add file → Upload files**.
+4. Upload the extracted files themselves, not the ZIP.
+5. Let files with matching names replace the existing versions and let the two new files be added:
+   - `main-page-redesign.css`
+   - `main-page-redesign.js`
+6. Commit directly to `main`.
+7. Wait for GitHub Pages to deploy, then refresh Teacher HQ normally.
 
 Suggested commit message:
 
-`Add cohorts, anonymous student profiles and class context`
+`Redesign Teacher HQ overview, cohorts and curriculum browser`
 
-After committing directly to `main`, wait for GitHub Pages to deploy, then refresh Teacher HQ normally.
+## Fast smoke test
+1. Open a user profile and confirm the main page loads.
+2. Confirm the persistent left menu shows Cohorts, Classes, Unit Planner, Curriculum Browser, Backup & Share, Trash.
+3. Confirm the Overview right rail shows Notifications, Add Lesson, Days Off, Calendar View.
+4. Click **Cohorts** and open a Cohort. Confirm it opens to Students & Interests and contains the Attention Grabbers, Curriculum Progress, and Assessments tabs.
+5. Add an Attention Grabber such as `Clap Sequence`.
+6. Open/create a Lesson, add a **Hook**, and confirm that Cohort Attention Grabber is selectable.
+7. Click an Overview calendar date and confirm Daily View opens. Test `+ Lesson`, `+ Event`, and `+ Block`.
+8. Add a **Sub Day** and confirm normal instructional lessons remain visible for that date along with the SUB indicator.
+9. Open **Curriculum Browser**. Choose a Grade button, then a Subject button, and open curriculum branches.
+10. Add a curriculum note, close/reopen the browser, and confirm the note remains.
+11. Enable **Split grade view** and confirm two independent Grade → Subject → Curriculum panes appear.
+12. Switch Curriculum Browser to **Progressions** and confirm progression browsing works.
+13. Select a noted curriculum objective in Lesson Planner and confirm the teacher note appears with the `Show this note on the lesson plan` option.
+14. Open Lesson Print View and confirm the note prints only when that option is selected.
+15. Open **Backup & Share** from the left navigation and confirm it moves to the existing backup/share section.
+16. Open **Calendar View** and confirm the dedicated calendar page loads.
 
-## Focused smoke test
-Run these one at a time:
-1. Select/create a Teacher HQ user and confirm Overview loads.
-2. Open **Manage Cohorts & Classes**. With no Cohorts, confirm there is one clear **Create Cohort** action and no redundant Add Class button.
-3. Create a Cohort with 15 students. Confirm 15 anonymous Student ## profiles are generated and all two-digit codes are unique within that Cohort.
-4. Open the Cohort dashboard. Add an optional nickname to one student, add an Interest tag + description, and add one individual Complexity item.
-5. Add Culture, School Setting, Classroom Setting and Cohort-wide Complexity items. Set/confirm the normal classroom location.
-6. Add a student-interest reminder for a date and selected Student ## IDs; confirm it appears in Overview notifications when due.
-7. Create a Class linked to the Cohort. Leave Class Name blank and confirm a name such as `Grade 4 Math` is generated. Create a second matching Class for another Cohort and confirm numbering such as `Grade 4 Math - 2`.
-8. Confirm the grade selector is readable, the colour preview updates, and Curriculum Assignment chips show titles without record counts.
-9. Link an Instructional Time schedule block to the Class and confirm Overview/Full Calendar use the Class colour.
-10. Create a Unit and Lesson. Open Lesson Planner and confirm Cohort Context is inherited, with a lesson-specific Classroom Setting override available.
-11. Add student interests and enable **Use Cohort Interests for Inspiration** in the Unit Simulation workspace.
-12. Copy a Unit to another Class and confirm the copy can be rescheduled/adapted without reusing old assessment/field-trip dates.
-13. Mark a Class Finished and confirm historical calendar entries remain with a `✓` marker while active-planning alerts ignore it. Reactivate it.
-14. Mark a School Term Finished and confirm its historical dates remain on the calendar with finished treatment. Reactivate it.
-15. Mark a Cohort Finished and confirm it moves to Finished Cohorts and can be reactivated.
-16. Confirm the Overview notification drawer says **Attention required**, has larger coloured `!` icons, contains no redundant second PD notification below it, and contains no “Only Instructional Time is counted” line.
+## Important data note
+Curriculum notes, custom daily Events/Blocks, Attention Grabbers, Cohorts, Classes, Lessons, and other planning data remain browser-local under the existing Teacher HQ storage architecture and are included in normal profile backup/share data according to the existing backup rules.

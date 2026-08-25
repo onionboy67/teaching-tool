@@ -327,7 +327,7 @@ function normalizeException(item) {
     startDate,
     endDate: endDate < startDate ? startDate : endDate,
     date: startDate,
-    type: ["Holiday", "PD Day", "Other"].includes(item.type) ? item.type : "Other",
+    type: ["Holiday", "PD Day", "Sub Day", "Other"].includes(item.type) ? item.type : "Other",
     label: item.label || "",
     description: item.description || item.topic || "",
     notes: item.notes || "",
@@ -892,7 +892,8 @@ function getExceptionForDate(user, dateKey) {
 }
 
 function isNoSchoolDate(user, dateKey) {
-  return Boolean(getExceptionForDate(user, dateKey));
+  const exception = getExceptionForDate(user, dateKey);
+  return Boolean(exception && exception.type !== "Sub Day");
 }
 
 function exceptionDateLabel(item) {
@@ -1736,6 +1737,7 @@ $("dayOffPDYes").addEventListener("change", updateDayOffFlow);
 $("dayOffPDNo").addEventListener("change", updateDayOffFlow);
 $("dayOffHolidayChoice").addEventListener("change", updateDayOffFlow);
 $("dayOffOtherChoice").addEventListener("change", updateDayOffFlow);
+$("dayOffSubChoice")?.addEventListener("change", updateDayOffFlow);
 $("dayOffStartDate").addEventListener("change", () => {
   if (!$("dayOffEndDate").value || $("dayOffEndDate").value < $("dayOffStartDate").value) {
     $("dayOffEndDate").value = $("dayOffStartDate").value;
@@ -1751,7 +1753,7 @@ dayOffForm.addEventListener("submit", event => {
   const startDate = $("dayOffStartDate").value;
   const useRange = Boolean($("dayOffUseRange")?.checked);
   const endDate = useRange ? ($("dayOffEndDate").value || startDate) : startDate;
-  if (!type) return alert("Please tell Teacher HQ whether this is a PD Day, Holiday, or Other day off.");
+  if (!type) return alert("Please choose PD Day, Holiday, Sub Day, or Other.");
   if (!startDate || (useRange && !endDate)) return alert(useRange ? "Please choose the start and end date." : "Please choose the date.");
   if (endDate < startDate) return alert("The end date cannot be before the start date.");
 
@@ -1893,7 +1895,8 @@ function editDayOff(id) {
     $("pdLocation").value = item.location || "";
   } else {
     $("dayOffPDNo").checked = true;
-    $(item.type === "Holiday" ? "dayOffHolidayChoice" : "dayOffOtherChoice").checked = true;
+    const choiceId = item.type === "Holiday" ? "dayOffHolidayChoice" : item.type === "Sub Day" ? "dayOffSubChoice" : "dayOffOtherChoice";
+    $(choiceId).checked = true;
     $("dayOffLabel").value = item.label || "";
     $("dayOffDescription").value = item.description || "";
     $("dayOffNotes").value = item.notes || "";
@@ -2085,13 +2088,14 @@ function renderCalendar() {
 
     const exception = user ? getExceptionForDate(user, dateKey) : null;
     if (exception) {
-      cell.classList.add("no-school-day", `no-school-${exception.type.toLowerCase().replaceAll(" ", "-")}`);
+      cell.classList.add(exception.type === "Sub Day" ? "sub-day" : "no-school-day", `no-school-${exception.type.toLowerCase().replaceAll(" ", "-")}`);
       const chip = document.createElement("span");
-      chip.className = `day-off-chip ${exception.type === "PD Day" ? "pd-chip" : ""}`;
-      chip.textContent = exception.label || exception.type;
+      chip.className = `day-off-chip ${exception.type === "PD Day" ? "pd-chip" : ""} ${exception.type === "Sub Day" ? "sub-day-chip" : ""}`;
+      chip.textContent = exception.type === "Sub Day" ? `SUB · ${exception.label || "Sub Day"}` : (exception.label || exception.type);
       chip.title = `${exception.type} · ${exceptionDateLabel(exception)}`;
       cell.appendChild(chip);
-    } else {
+    }
+    if (!exception || exception.type === "Sub Day") {
       const occurrences = user ? getOccurrencesForDate(date, user) : [];
       const instructional = occurrences.filter(item => item.block.blockType === "Instructional Time");
       const unplannedCount = instructional.filter(item => !item.planned).length;
@@ -2205,7 +2209,7 @@ $("nextMonth").addEventListener("click", event => {
   renderCalendar();
 });
 
-$("calendarCard").addEventListener("click", () => { window.location.href = "calendar.html"; });
+// Calendar dates and their contents are interactive; Calendar View has its own explicit button.
 
 /* ============================================================
    DAY DETAILS + PLANNED TOGGLE + UNIT ALLOCATION LINKS
@@ -3913,15 +3917,16 @@ function renderUnitCalendar() {
 
     if (exception) {
       cell.classList.add(
-        "unit-off-day",
+        exception.type === "Sub Day" ? "unit-sub-day" : "unit-off-day",
         `unit-off-${exception.type.toLowerCase().replaceAll(" ", "-")}`
       );
 
       const label = document.createElement("span");
-      label.className = "unit-calendar-note off-note";
-      label.textContent = exception.label || exception.type;
+      label.className = `unit-calendar-note off-note ${exception.type === "Sub Day" ? "sub-day-note" : ""}`;
+      label.textContent = exception.type === "Sub Day" ? `SUB · ${exception.label || "Sub Day"}` : (exception.label || exception.type);
       cell.appendChild(label);
-    } else {
+    }
+    if (!exception || exception.type === "Sub Day") {
       if (lessonsHere.length) {
         const colour = normalizeHexColour(unitDraft.colour) || "#8C6CFF";
 
@@ -4474,13 +4479,13 @@ function renderUnitWorkspaceCalendar() {
 
     if (exception) {
       cell.classList.add(
-        "unit-off-day",
+        exception.type === "Sub Day" ? "unit-sub-day" : "unit-off-day",
         `unit-off-${exception.type.toLowerCase().replaceAll(" ", "-")}`
       );
 
       const off = document.createElement("span");
-      off.className = "unit-calendar-note off-note";
-      off.textContent = exception.label || exception.type;
+      off.className = `unit-calendar-note off-note ${exception.type === "Sub Day" ? "sub-day-note" : ""}`;
+      off.textContent = exception.type === "Sub Day" ? `SUB · ${exception.label || "Sub Day"}` : (exception.label || exception.type);
       cell.appendChild(off);
     }
 
@@ -7513,10 +7518,11 @@ function buildReadableMonthHTML(year, month, user) {
     const exception = getExceptionForDate(user, dateKey);
     let items = "";
     if (exception) {
-      items = `<div class="item off"><strong>${escapeHTML(exception.label || exception.type)}</strong><br><span class="muted">${escapeHTML(exception.type)}</span></div>`;
-    } else {
+      items += `<div class="item off"><strong>${escapeHTML(exception.type === "Sub Day" ? `SUB · ${exception.label || "Sub Day"}` : (exception.label || exception.type))}</strong><br><span class="muted">${escapeHTML(exception.type)}</span></div>`;
+    }
+    if (!exception || exception.type === "Sub Day") {
       const occurrences = getOccurrencesForDate(date, user);
-      items = occurrences.map(occurrence => {
+      items += occurrences.map(occurrence => {
         const block = occurrence.block;
         let statusClass = "other";
         if (block.blockType === "Instructional Time") statusClass = occurrence.planned ? "planned" : "unplanned";
