@@ -88,3 +88,70 @@ body{background:linear-gradient(180deg,#fbfbfd 0,#f7f8fb 48%,#faf9f7 100%)}
 .lesson-calendar-off strong,.lesson-calendar-off span{display:block}.lesson-calendar-off span{font-size:8px}
 .lesson-calendar-legend{margin-top:2px}
 @media(max-width:850px){.lesson-calendar-day{min-height:84px}.lesson-calendar-chip small{display:none}}
+
+/* ============================================================
+   COHORT + CLASS REFINEMENT (v16)
+   ------------------------------------------------------------
+   Cohorts contain students and learning context. Classes connect one
+   Cohort to curriculum, Units, Lessons and assessment.
+============================================================ */
+
+/* Notification emphasis */
+.notification-icon{display:inline-flex;align-items:center;justify-content:center;min-width:24px;font-size:22px;line-height:1;font-weight:900}
+.notification-row.notification-danger .notification-icon,.notification-item.danger .notification-icon{color:#d92d20}
+.notification-row.notification-warning .notification-icon,.notification-item.warning .notification-icon{color:#b86e00}
+.notification-row.notification-info .notification-icon,.notification-item.info .notification-icon{color:#2477d4}
+.notification-row.notification-reflection .notification-icon{color:#7a55c7}
+.notification-row.notification-interest .notification-icon{color:#008f83}
+.notification-row.notification-backup .notification-icon{color:#248a4b}
+.notification-row.notification-reflection{border-left-color:#9b7ad8}
+.notification-row.notification-interest{border-left-color:#1ba99b}
+.notification-row.notification-backup{border-left-color:#50a96c}
+
+/* Cohort / Class manager */
+.class-manager-tabs{display:flex;gap:7px;margin:2px 0 15px;padding:4px;background:#f0f1f4;border-radius:13px;width:max-content;max-width:100%}
+.class-manager-tabs button{border:0;background:transparent;border-radius:10px;padding:8px 13px;font:inherit;font-weight:750;color:#666;cursor:pointer}
+.class-manager-tabs button.active{background:#fff;color:#17171a;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.clean-manager-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0 12px}.clean-manager-heading h3{margin:0;font-size:18px;letter-spacing:-.02em}
+.manager-empty-state{display:grid;justify-items:start;gap:11px;border:1px dashed rgba(29,29,31,.17);border-radius:18px;padding:20px;background:#fafafd}.manager-empty-state strong{font-size:16px}.manager-empty-state p{margin:0;color:var(--hq-muted);max-width:620px}
+.class-manager-list,.cohort-manager-list{display:grid;gap:10px}
+.class-manager-card,.cohort-manager-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;border:1px solid var(--hq-border);background:#fff;border-radius:17px;padding:13px 14px;position:relative;overflow:hidden}
+.class-manager-card{padding-left:19px}.class-colour-bar{position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--course-colour,#61b6ff)}
+.class-manager-main,.cohort-manager-main{border:0;background:transparent;padding:0;text-align:left;cursor:pointer;min-width:0;color:inherit}.class-manager-main strong,.cohort-manager-main strong{display:block;font-size:15px;margin-bottom:3px}.class-manager-main span,.cohort-manager-main span{display:block;color:var(--hq-muted);font-size:12px;white-space:normal}.manager-card-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.manager-card-actions button{white-space:nowrap}
+.mini-coverage{margin-top:7px;display:flex;gap:6px;flex-wrap:wrap}.mini-coverage span{font-size:10px;background:#f4f4f7;border-radius:999px;padding:3px 7px;color:#555}
+.archived-record{opacity:.72}.archived-record:hover{opacity:.9}.archive-section{margin-top:21px;padding-top:15px;border-top:1px solid var(--hq-border)}.archive-section>summary{cursor:pointer;font-weight:800;color:#666;margin-bottom:10px}.archive-section[open]>summary{color:#333}
+.term-card.archived-record,.term-summary-card.archived-record{filter:saturate(.72)}
+
+/* Class editor */
+.class-title-colour-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}.class-name-field{min-width:0}.compact-colour-control{display:grid;grid-template-columns:auto 42px;align-items:center;gap:7px;font-size:10px;color:var(--hq-muted)}.compact-colour-control input[type="color"]{width:42px;height:36px;border:1px solid var(--hq-border);border-radius:10px;background:#fff;padding:3px;cursor:pointer}.compact-colour-control [data-colour-preview]{width:15px;height:15px;border-radius:50%;background:var(--preview,#61b6ff);box-shadow:0 0 0 1px rgba(0,0,0,.12)}
+.class-editor-section{margin-top:16px;padding-top:15px;border-top:1px solid var(--hq-border)}.class-editor-section>h3{font-size:14px;margin:0 0 9px}.class-editor-section>p{margin:-2px 0 11px;color:var(--hq-muted);font-size:11px}
+.grade-tile-picker{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:7px}.grade-tile{position:relative;display:grid;place-items:center;min-height:48px;border:1px solid var(--hq-border);border-radius:12px;background:#fff;font-size:12px;font-weight:750;cursor:pointer;text-align:center;padding:8px}.grade-tile input{position:absolute;opacity:0;pointer-events:none}.grade-tile:has(input:checked),.grade-tile.selected{border-color:#6954d8;background:#f1edff;color:#4937a6;box-shadow:inset 0 0 0 1px rgba(105,84,216,.12)}.grade-tile:focus-within{outline:3px solid rgba(79,129,255,.18);outline-offset:1px}
+.additional-subjects{margin-top:10px}.subject-chip-picker{display:flex;flex-wrap:wrap;gap:7px}.subject-chip-check{position:relative;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--hq-border);border-radius:999px;padding:7px 10px;background:#fff;font-size:11px;font-weight:700;cursor:pointer}.subject-chip-check input{margin:0}.subject-chip-check:has(input:checked){border-color:#6954d8;background:#f1edff;color:#4937a6}
+.class-curriculum-assignment{margin-top:10px}.curriculum-assignment-list{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}.curriculum-assignment-chip{display:inline-flex;align-items:center;border-radius:999px;background:#eef3fb;color:#355271;padding:7px 10px;font-size:11px;font-weight:750}.curriculum-empty{font-size:11px;color:var(--hq-muted);font-style:italic}.cohort-chip{display:inline-flex;align-items:center;border-radius:999px;background:#eff8f3;color:#28704a;padding:4px 8px;font-size:10px;font-weight:800;margin-top:7px}
+
+/* Dashboard / Unit copy */
+.class-dashboard-action-row{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin:0 0 12px}.unit-copy-wrap{display:flex;justify-content:flex-end;margin:6px 0 10px}.copy-unit-button{white-space:nowrap}.copy-unit-note{border-radius:12px;background:#f6f6f9;padding:10px 12px;color:#65656b;font-size:11px;line-height:1.45;margin-top:10px}
+.class-cohort-context{display:grid;gap:10px}.cohort-context-read-card{border:1px solid var(--hq-border);border-radius:15px;background:#fff;padding:12px}.cohort-context-read-card h4{margin:0 0 6px}.cohort-context-read-card ul{margin:0;padding-left:18px}.cohort-context-read-card li+li{margin-top:5px}
+
+/* Cohort context */
+.cohort-count-summary{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 13px}.cohort-count-summary span{background:#f4f4f7;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:700;color:#555}
+.cohort-context-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.cohort-context-module{border:1px solid var(--hq-border);border-radius:17px;background:#fff;padding:13px;min-width:0}.cohort-module-heading{display:flex;justify-content:space-between;align-items:start;gap:10px}.cohort-module-heading h4{margin:0;font-size:14px}.cohort-module-heading p{margin:4px 0 0;color:var(--hq-muted);font-size:10px;line-height:1.4}.context-bullet-list{display:grid;gap:7px;margin-top:11px}.context-bullet-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:start;border-radius:11px;background:#f8f8fa;padding:8px}.context-bullet-item.default-context{background:#f0f8f3}.bullet-dot{font-size:15px;line-height:1.1;color:#67676d}.context-bullet-item strong{display:block;font-size:12px}.context-bullet-item p{margin:3px 0 0;color:#68686e;font-size:10px;line-height:1.4}.context-bullet-item button{border:0;background:transparent;color:#666;cursor:pointer;padding:2px 4px}.empty-context-item{margin:10px 0 0;color:var(--hq-muted);font-size:11px;font-style:italic}
+
+/* Anonymous students and interests */
+.student-roster-list{display:grid;gap:9px}.student-profile-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;border:1px solid var(--hq-border);border-radius:15px;background:#fff;padding:11px 12px}.student-code{display:grid;place-items:center;min-width:48px;height:36px;border-radius:10px;background:#17171a;color:#fff;font-size:14px;font-weight:850;letter-spacing:.04em}.student-profile-main{min-width:0}.student-profile-main strong{display:block;font-size:13px}.student-profile-main small{display:block;color:var(--hq-muted);margin-top:2px}.student-interest-tags,.cohort-interest-cloud{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.interest-tag{border:1px solid rgba(61,104,183,.14);background:#eef3fb;color:#345b9b;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:750;cursor:pointer}.interest-tag small{display:inline;color:inherit;opacity:.7;margin-left:3px}.interest-tag.selected{background:#dfe9ff;border-color:#6d8fd7;color:#24477e}.no-interest-tags{font-size:10px;color:var(--hq-muted);font-style:italic}.cohort-interest-cloud .interest-tag{font-size:11px;padding:6px 9px}
+
+/* Interest reminders */
+.interest-reminder-form{border:1px solid var(--hq-border);background:#fafafd;border-radius:16px;padding:12px;margin-bottom:12px}.reminder-form-grid{display:grid;grid-template-columns:170px minmax(0,1fr);gap:9px}.student-reminder-picker{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.student-reminder-picker label{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--hq-border);background:#fff;border-radius:999px;padding:6px 8px;font-size:10px;cursor:pointer}.student-reminder-picker label:has(input:checked){background:#eff8f3;border-color:#79b994;color:#236945}.interest-reminder-list{display:grid;gap:8px}.interest-reminder-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--hq-border);border-radius:14px;background:#fff;padding:10px 12px}.interest-reminder-row strong{display:block;font-size:12px}.interest-reminder-row span{display:block;color:var(--hq-muted);font-size:10px;margin-top:2px}.interest-reminder-row.completed{opacity:.58}.interest-reminder-row.completed strong{text-decoration:line-through}.unit-archive-section{margin-top:18px;border-top:1px solid var(--hq-border);padding-top:13px}
+
+/* Lesson-specific Cohort context */
+.lesson-cohort-context-card{display:grid;gap:12px}.lesson-cohort-context-heading{display:flex;justify-content:space-between;gap:10px;align-items:start}.lesson-cohort-context-heading small{display:block;color:var(--hq-muted);margin-top:3px}.lesson-cohort-context-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.lesson-context-module{border:1px solid var(--hq-border);border-radius:13px;padding:10px;background:#fafafd}.lesson-context-module h4{margin:0 0 7px;font-size:12px}.lesson-context-options{display:grid;gap:6px}.lesson-context-option{display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px;align-items:start;border-radius:9px;padding:6px;background:#fff}.lesson-context-option input{margin-top:2px}.lesson-context-option strong{display:block;font-size:11px}.lesson-context-option small{display:block;color:var(--hq-muted);font-size:9px;margin-top:2px}.lesson-classroom-select{width:100%;border:1px solid var(--hq-border);border-radius:9px;padding:8px;background:#fff}.lesson-context-empty{font-size:10px;color:var(--hq-muted);font-style:italic}.lesson-context-manage{white-space:nowrap}
+
+/* Simulation interest inspiration */
+.simulation-interest-panel{margin-top:13px;border:1px solid rgba(0,143,131,.18);background:#f5fbfa;border-radius:15px;padding:12px}.simulation-interest-panel .checkbox-row{margin:0}.simulation-interest-panel h5{margin:10px 0 4px;font-size:12px}.simulation-interest-panel p{margin:0;color:var(--hq-muted);font-size:10px}.simulation-interest-tags{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}.simulation-interest-tag{border:1px solid rgba(0,143,131,.18);background:#fff;border-radius:999px;padding:6px 9px;font-size:10px;font-weight:750;cursor:pointer}.simulation-interest-tag.selected{background:#dff7f2;border-color:#51b8a9;color:#17695f}.simulation-interest-tag:disabled{cursor:default;opacity:.65}
+
+@media(max-width:760px){
+  .class-manager-card,.cohort-manager-card,.student-profile-row,.interest-reminder-row{grid-template-columns:1fr}.manager-card-actions{justify-content:flex-start}.class-title-colour-row{grid-template-columns:1fr}.compact-colour-control{justify-self:start}.cohort-context-grid,.lesson-cohort-context-grid{grid-template-columns:1fr}.reminder-form-grid{grid-template-columns:1fr}.grade-tile-picker{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+.student-subsection-label{margin-top:9px;font-size:9px;text-transform:uppercase;letter-spacing:.07em;font-weight:850;color:#777}.student-complexity-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}.student-complexity-tag{border:1px solid rgba(152,96,59,.16);background:#fbf1e9;color:#815032;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:750;cursor:pointer}.student-profile-actions{display:grid;gap:6px;align-self:start}.student-profile-actions button{white-space:nowrap}
+@media(max-width:760px){.student-profile-actions{display:flex;flex-wrap:wrap}}
+.overview-instruction-chip.archived{opacity:.62;filter:saturate(.55);box-shadow:inset 0 0 0 1px rgba(29,29,31,.12)}.daily-event.archived{opacity:.68;filter:saturate(.65)}

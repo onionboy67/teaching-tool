@@ -16,7 +16,10 @@
   function rgba(background,alpha=.15){const [r,g,b]=rgbFromHex(background);return `rgba(${r}, ${g}, ${b}, ${alpha})`;}
 
   function classForBlock(user, block) {
-    return window.TeacherHQClasses?.classById(user, block.classId) || (user.classes || []).find(item => classKey({grades:item.grades,subject:item.subject})===classKey({grades:block.grades,subject:block.subject})) || null;
+    const linked = window.TeacherHQClasses?.classById(user, block.classId);
+    if (linked) return linked;
+    const matches = (user.classes || []).filter(item => classKey({grades:item.grades,subject:item.subject})===classKey({grades:block.grades,subject:block.subject}));
+    return matches.length === 1 ? matches[0] : null;
   }
 
   function courseColour(user, block) {
@@ -31,9 +34,17 @@
 
   function instructionalLabel(user, occurrence) {
     const linked=lessonForOccurrence(user,occurrence);
-    if(linked) return lessonDisplayTitleForUnit(linked.unit,linked.lesson);
     const teachingClass=classForBlock(user,occurrence.block);
-    return teachingClass?.name || `${gradeDisplay(occurrence.block.grades)} ${occurrence.block.subject}`.trim() || "Instructional Block";
+    const term=(user.terms||[]).find(item=>item.id===occurrence.termId);
+    const finished=Boolean(teachingClass?.archivedAt||term?.archivedAt);
+    const label=linked ? lessonDisplayTitleForUnit(linked.unit,linked.lesson) : (teachingClass?.name || `${gradeDisplay(occurrence.block.grades)} ${occurrence.block.subject}`.trim() || "Instructional Block");
+    return `${finished?"✓ ":""}${label}`;
+  }
+
+  function occurrenceArchived(user, occurrence) {
+    const teachingClass = classForBlock(user, occurrence.block);
+    const term = (user.terms || []).find(item => item.id === occurrence.termId);
+    return Boolean(teachingClass?.archivedAt || term?.archivedAt);
   }
 
   function reflectionDueItems(user) {
@@ -45,16 +56,22 @@
   function notificationItems(user) {
     if(!user)return[]; const items=[]; const today=getLocalDateKey();
     if(user.lastBackupDate!==today)items.push({type:"backup",icon:"↓",title:"Daily backup needed",detail:"Download today's portable recovery copy.",action:()=>document.getElementById("downloadBackupButton")?.click()});
-    if(user.terms?.length){const counts=countFutureAttentionItems(user);if(counts.unplanned)items.push({type:"danger",icon:"!",title:`${counts.unplanned} lesson block${counts.unplanned===1?"":"s"} need planning`,detail:"Only Instructional Time is counted."});if(counts.conflicts)items.push({type:"warning",icon:"!",title:`${counts.conflicts} schedule conflict${counts.conflicts===1?"":"s"}`,detail:"Overlaps are allowed but should be reviewed."});}
-    const pd=getPDAttentionItems?.(user)||[]; if(pd.length)items.push({type:"info",icon:"i",title:`${pd.length} upcoming PD entr${pd.length===1?"y":"ies"} incomplete`,detail:"Location or description is missing.",action:()=>document.getElementById("manageDaysOffButton")?.click()});
-    const reflections=reflectionDueItems(user);if(reflections.length)items.push({type:"reflection",icon:"↺",title:`${reflections.length} lesson reflection${reflections.length===1?"":"s"} need attention`,detail:`Oldest: ${formatDate(reflections[0].lesson.dateKey)} · ${reflections[0].unit.name}`,action:()=>window.TeacherHQLessonPlanner?.open?.(reflections[0].unit.id,reflections[0].lesson.id)});
+    if((user.terms||[]).some(term=>!term.archivedAt)){const counts=countFutureAttentionItems(user);if(counts.unplanned)items.push({type:"danger",icon:"!",title:`${counts.unplanned} lesson block${counts.unplanned===1?"":"s"} need planning`,detail:""});if(counts.conflicts)items.push({type:"warning",icon:"!",title:`${counts.conflicts} schedule conflict${counts.conflicts===1?"":"s"}`,detail:"Overlaps are allowed but should be reviewed."});}
+    const pd=getPDAttentionItems?.(user)||[]; if(pd.length)items.push({type:"info",icon:"!",title:`${pd.length} upcoming PD entr${pd.length===1?"y":"ies"} incomplete`,detail:"Location or description is missing.",action:()=>document.getElementById("manageDaysOffButton")?.click()});
+    const reflections=reflectionDueItems(user);if(reflections.length)items.push({type:"reflection",icon:"!",title:`${reflections.length} lesson reflection${reflections.length===1?"":"s"} need attention`,detail:`Oldest: ${formatDate(reflections[0].lesson.dateKey)} · ${reflections[0].unit.name}`,action:()=>window.TeacherHQLessonPlanner?.open?.(reflections[0].unit.id,reflections[0].lesson.id)});
+    (user.interestReminders||[]).filter(reminder=>!reminder.completedAt&&reminder.dueDate&&reminder.dueDate<=today).sort((a,b)=>a.dueDate.localeCompare(b.dueDate)).forEach(reminder=>{
+      const cohort=window.TeacherHQClasses?.cohortById?.(user,reminder.cohortId); if(!cohort)return;
+      const students=(reminder.studentIds||[]).map(id=>(cohort.students||[]).find(student=>student.id===id)).filter(Boolean);
+      const label=students.length?students.map(student=>student.code).join(", "):"selected students";
+      items.push({type:"interest",icon:"!",title:reminder.note||"Gather student interests",detail:`${cohort.name} · Students ${label}`,action:()=>window.TeacherHQClasses?.openCohortDashboard?.(cohort.id,"reminders")});
+    });
     return items;
   }
 
   function renderNotificationDock(user) {
     const dock=$id("notificationDock"); if(!dock)return; const items=notificationItems(user); document.querySelectorAll(".legacy-notice,#reflectionAlert").forEach(el=>el.classList.add("hidden"));
-    if(!items.length){dock.classList.add("hidden");dock.innerHTML="";return;} dock.classList.remove("hidden"); dock.innerHTML=`<button type="button" class="notification-summary-button" aria-expanded="false"><span class="notification-bell">🔔</span><strong>${items.length} thing${items.length===1?"":"s"} need attention</strong><small>${escapeHTML(items[0].title)}</small><span class="notification-chevron">⌄</span></button><div class="notification-drawer hidden"></div>`;
-    const drawer=dock.querySelector(".notification-drawer"); items.forEach(item=>{const row=document.createElement(item.action?"button":"article");if(item.action)row.type="button";row.className=`notification-row notification-${item.type}`;row.innerHTML=`<span>${item.icon}</span><div><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.detail||"")}</small></div>${item.action?'<em>→</em>':''}`;if(item.action)row.onclick=item.action;drawer.appendChild(row);});
+    if(!items.length){dock.classList.add("hidden");dock.innerHTML="";return;} dock.classList.remove("hidden"); dock.innerHTML=`<button type="button" class="notification-summary-button" aria-expanded="false"><span class="notification-bell">🔔</span><strong>Attention required</strong><small>${escapeHTML(items[0].title)}</small><span class="notification-chevron">⌄</span></button><div class="notification-drawer hidden"></div>`;
+    const drawer=dock.querySelector(".notification-drawer"); items.forEach(item=>{const row=document.createElement(item.action?"button":"article");if(item.action)row.type="button";row.className=`notification-row notification-${item.type}`;row.innerHTML=`<span class="notification-icon">${item.icon}</span><div><strong>${escapeHTML(item.title)}</strong>${item.detail?`<small>${escapeHTML(item.detail)}</small>`:""}</div>${item.action?'<em>→</em>':''}`;if(item.action)row.onclick=item.action;drawer.appendChild(row);});
     const button=dock.querySelector(".notification-summary-button");button.onclick=()=>{const open=button.getAttribute("aria-expanded")==="true";button.setAttribute("aria-expanded",String(!open));drawer.classList.toggle("hidden",open);dock.classList.toggle("open",!open);};
   }
 
@@ -66,7 +83,7 @@
     for(let d=1;d<=days;d++){
       const date=new Date(year,month,d), key=getLocalDateKey(date);const cell=document.createElement("div");cell.className="day overview-rich-day";cell.dataset.dateKey=key;if([0,6].includes(date.getDay()))cell.classList.add("weekend");if(key<today)cell.classList.add("past");if(key===today)cell.classList.add("today");cell.innerHTML=`<span class="day-number">${d}</span><div class="overview-day-events"></div>`;const events=cell.querySelector("div");
       const exception=getExceptionForDate(user,key);if(exception){cell.classList.add("no-school-day",`no-school-${exception.type.toLowerCase().replaceAll(" ","-")}`);events.insertAdjacentHTML("beforeend",`<span class="overview-day-off"><strong>${escapeHTML(exception.label||exception.type)}</strong><small>${escapeHTML(exception.type)}</small></span>`);} else {
-        getOccurrencesForDate(date,user).filter(o=>o.block.blockType==="Instructional Time").forEach(occ=>{const linked=lessonForOccurrence(user,occ);const planned=Boolean(occ.planned || linked?.unit?.workspace?.lessonPlans?.[linked.lesson.id]?.complete);const colour=courseColour(user,occ.block);const chip=document.createElement("button");chip.type="button";chip.className=`overview-instruction-chip ${planned?"planned":"needs-plan"} ${occ.conflict?"conflict":""}`;chip.style.setProperty("--course-colour",colour);chip.style.setProperty("--course-text",contrastText(colour));chip.textContent=instructionalLabel(user,occ);chip.title=`${formatTime(occ.block.startTime)}–${formatTime(occ.block.endTime)} · ${planned?"Planned":"Lesson needs to be created/planned"}`;chip.onclick=e=>{e.stopPropagation();if(linked)openLessonPlaceholder(linked.unit.id,linked.lesson.id);else openDailyView(key);};events.appendChild(chip);});
+        getOccurrencesForDate(date,user).filter(o=>o.block.blockType==="Instructional Time").forEach(occ=>{const linked=lessonForOccurrence(user,occ);const archived=occurrenceArchived(user,occ);const planned=Boolean(archived || occ.planned || linked?.unit?.workspace?.lessonPlans?.[linked.lesson.id]?.complete);const colour=courseColour(user,occ.block);const chip=document.createElement("button");chip.type="button";chip.className=`overview-instruction-chip ${planned?"planned":"needs-plan"} ${archived?"archived":""} ${occ.conflict&&!archived?"conflict":""}`;chip.style.setProperty("--course-colour",colour);chip.style.setProperty("--course-text",contrastText(colour));chip.textContent=instructionalLabel(user,occ);chip.title=`${formatTime(occ.block.startTime)}–${formatTime(occ.block.endTime)} · ${archived?"Finished / archived":planned?"Planned":"Lesson needs to be created/planned"}`;chip.onclick=e=>{e.stopPropagation();if(linked)openLessonPlaceholder(linked.unit.id,linked.lesson.id);else openDailyView(key);};events.appendChild(chip);});
       }
       getFieldTripsForDate(user,key).forEach(({unit,trip})=>{const c=hex(unit.colour,"#FF7043");const chip=document.createElement("button");chip.type="button";chip.className="overview-trip-chip";chip.style.setProperty("--trip-colour",c);chip.style.setProperty("--trip-text",contrastText(c));chip.textContent=`🚌 ${trip.title}`;chip.onclick=e=>{e.stopPropagation();activeUnitWorkspaceId=unit.id;activeUnitWorkspaceSection="fieldTrips";workspaceFieldTripEditorId=trip.id;renderUnitWorkspace();};events.appendChild(chip);});
       cell.onclick=e=>{e.stopPropagation();openDailyView(key);};grid.appendChild(cell);
@@ -80,9 +97,42 @@
 
   function dayData(user,dateKey){const date=parseLocalDate(dateKey);const occurrences=getOccurrencesForDate(date,user);const trips=getFieldTripsForDate(user,dateKey);const exception=getExceptionForDate(user,dateKey);const assessmentItems=[];(user.units||[]).forEach(unit=>(unit.workspace?.assessments||[]).filter(a=>a.status!=="draft"&&a.date===dateKey).forEach(assessment=>assessmentItems.push({unit,assessment})));const milestones=[];(user.units||[]).forEach(unit=>{const plans=unit.workspace?.lessonPlans||{};Object.entries(plans).forEach(([lessonId,plan])=>(plan.assessments?.links||[]).forEach(link=>{const assessment=(unit.workspace?.assessments||[]).find(a=>a.id===link.assessmentId);if(!assessment)return;if(link.toStudentsDate===dateKey)milestones.push({unit,assessment,direction:"TO"});if(link.fromStudentsDate===dateKey)milestones.push({unit,assessment,direction:"FROM"});}));});return{date,occurrences,trips,exception,assessmentItems,milestones};}
 
-  function dailyAlertsFor(user,dateKey){const alerts=[];const data=dayData(user,dateKey);const unplanned=data.occurrences.filter(o=>o.block.blockType==="Instructional Time"&&!o.planned).length;if(unplanned)alerts.push(`${unplanned} instructional block${unplanned===1?"":"s"} still need planning.`);const conflicts=getConflictPairCount(data.occurrences);if(conflicts)alerts.push(`${conflicts} schedule conflict${conflicts===1?"":"s"} on this date.`);const weekStart=parseLocalDate(dateKey);weekStart.setDate(weekStart.getDate()-weekStart.getDay());const weekEnd=new Date(weekStart);weekEnd.setDate(weekEnd.getDate()+6);const weekly=notificationItems(user).map(item=>item.title);return{alerts,weekly};}
+  function dailyAlertsFor(user,dateKey){const alerts=[];const data=dayData(user,dateKey);const unplanned=data.occurrences.filter(o=>o.block.blockType==="Instructional Time"&&!o.planned&&!occurrenceArchived(user,o)).length;if(unplanned)alerts.push(`${unplanned} instructional block${unplanned===1?"":"s"} still need planning.`);const conflicts=getConflictPairCount(data.occurrences.filter(o=>!occurrenceArchived(user,o)));if(conflicts)alerts.push(`${conflicts} schedule conflict${conflicts===1?"":"s"} on this date.`);const weekly=notificationItems(user).map(item=>item.title);return{alerts,weekly};}
 
-  function dailyContentHTML(user,dateKey,print=false){const data=dayData(user,dateKey);let html="";if(data.exception)html+=`<div class="daily-day-off"><strong>${escapeHTML(data.exception.label||data.exception.type)}</strong><span>${escapeHTML(data.exception.type)}${data.exception.description?` · ${escapeHTML(data.exception.description)}`:""}</span></div>`;const rows=[];data.occurrences.forEach(occ=>{const block=occ.block,linked=lessonForOccurrence(user,occ);rows.push({time:block.startTime,html:block.blockType==="Instructional Time"?`<article class="daily-event instructional ${occ.planned?"planned":"unplanned"}" style="--event-colour:${courseColour(user,block)}"><time>${escapeHTML(formatTime(block.startTime))}</time><div><strong>${escapeHTML(linked?lessonDisplayTitleForUnit(linked.unit,linked.lesson):(classForBlock(user,block)?.name||`${gradeDisplay(block.grades)} ${block.subject}`))}</strong><span>${linked?escapeHTML(linked.unit.name):"Instructional Time"}${!occ.planned?" · needs planning":""}</span></div></article>`:`<article class="daily-event noninstructional"><time>${escapeHTML(formatTime(block.startTime))}</time><div><strong>${escapeHTML(block.label||block.blockType)}</strong><span>${escapeHTML(block.blockType)}</span></div></article>`});});data.trips.forEach(({unit,trip})=>rows.push({time:"12:00",html:`<article class="daily-event field-trip"><time>🚌</time><div><strong>Field Trip — ${escapeHTML(trip.title)}</strong><span>${escapeHTML(unit.name)}${trip.location?` · ${escapeHTML(trip.location)}`:""}</span></div></article>`}));data.assessmentItems.forEach(({unit,assessment})=>rows.push({time:"23:50",html:`<article class="daily-event assessment"><time>✓</time><div><strong>${escapeHTML(assessment.title)}</strong><span>${escapeHTML(assessmentTypeLabel(assessment.type))} · ${escapeHTML(unit.name)}</span></div></article>`}));data.milestones.forEach(({unit,assessment,direction})=>rows.push({time:direction==="TO"?"07:00":"23:40",html:`<article class="daily-event assessment-milestone"><time>${direction}</time><div><strong>${escapeHTML(assessment.title)}</strong><span>${direction==="TO"?"To students":"From students"} · ${escapeHTML(unit.name)}</span></div></article>`}));rows.sort((a,b)=>a.time.localeCompare(b.time));html+=`<div class="daily-timeline">${rows.length?rows.map(r=>r.html).join(""):'<div class="empty-state-card">Nothing is scheduled for this date.</div>'}</div>`;const reflection=user.dailyRecords?.[dateKey]?.reflection||"";if(print)html+=`<section class="print-daily-reflection"><h3>Daily Reflection</h3><p>${reflection?escapeHTML(reflection).replaceAll("\n","<br>"):'&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;'}</p></section>`;return html;}
+  function dailyContentHTML(user, dateKey, print = false) {
+    const data = dayData(user, dateKey);
+    let html = "";
+    if (data.exception) html += `<div class="daily-day-off"><strong>${escapeHTML(data.exception.label || data.exception.type)}</strong><span>${escapeHTML(data.exception.type)}${data.exception.description ? ` · ${escapeHTML(data.exception.description)}` : ""}</span></div>`;
+    const rows = [];
+    data.occurrences.forEach(occ => {
+      const block = occ.block, linked = lessonForOccurrence(user, occ);
+      if (block.blockType === "Instructional Time") {
+        const archived = occurrenceArchived(user, occ);
+        const title = linked ? lessonDisplayTitleForUnit(linked.unit, linked.lesson) : (classForBlock(user, block)?.name || `${gradeDisplay(block.grades)} ${block.subject}`);
+        const detail = linked ? linked.unit.name : "Instructional Time";
+        rows.push({
+          time: block.startTime,
+          html: `<article class="daily-event instructional ${archived ? "archived" : occ.planned ? "planned" : "unplanned"}" style="--event-colour:${courseColour(user, block)}"><time>${escapeHTML(formatTime(block.startTime))}</time><div><strong>${escapeHTML(`${archived ? "✓ " : ""}${title}`)}</strong><span>${escapeHTML(detail)}${archived ? " · finished / archived" : !occ.planned ? " · needs planning" : ""}</span></div></article>`
+        });
+      } else {
+        rows.push({ time: block.startTime, html: `<article class="daily-event noninstructional"><time>${escapeHTML(formatTime(block.startTime))}</time><div><strong>${escapeHTML(block.label || block.blockType)}</strong><span>${escapeHTML(block.blockType)}</span></div></article>` });
+      }
+    });
+    data.trips.forEach(({ unit, trip }) => {
+      const archived = Boolean(window.TeacherHQClasses?.classById?.(user, unit.classId)?.archivedAt);
+      rows.push({ time: "12:00", html: `<article class="daily-event field-trip ${archived ? "archived" : ""}"><time>🚌</time><div><strong>${archived ? "✓ " : ""}Field Trip — ${escapeHTML(trip.title)}</strong><span>${escapeHTML(unit.name)}${trip.location ? ` · ${escapeHTML(trip.location)}` : ""}</span></div></article>` });
+    });
+    data.assessmentItems.forEach(({ unit, assessment }) => {
+      const archived = Boolean(window.TeacherHQClasses?.classById?.(user, unit.classId)?.archivedAt);
+      rows.push({ time: "23:50", html: `<article class="daily-event assessment ${archived ? "archived" : ""}"><time>✓</time><div><strong>${archived ? "✓ " : ""}${escapeHTML(assessment.title)}</strong><span>${escapeHTML(assessmentTypeLabel(assessment.type))} · ${escapeHTML(unit.name)}</span></div></article>` });
+    });
+    data.milestones.forEach(({ unit, assessment, direction }) => rows.push({ time: direction === "TO" ? "07:00" : "23:40", html: `<article class="daily-event assessment-milestone"><time>${direction}</time><div><strong>${escapeHTML(assessment.title)}</strong><span>${direction === "TO" ? "To students" : "From students"} · ${escapeHTML(unit.name)}</span></div></article>` }));
+    rows.sort((a, b) => a.time.localeCompare(b.time));
+    html += `<div class="daily-timeline">${rows.length ? rows.map(row => row.html).join("") : '<div class="empty-state-card">Nothing is scheduled for this date.</div>'}</div>`;
+    const reflection = user.dailyRecords?.[dateKey]?.reflection || "";
+    if (print) html += `<section class="print-daily-reflection"><h3>Daily Reflection</h3><p>${reflection ? escapeHTML(reflection).replaceAll("\n", "<br>") : '&nbsp;<br>&nbsp;<br>&nbsp;<br>&nbsp;'}</p></section>`;
+    return html;
+  }
 
   function openDailyView(dateKey){const user=getActiveUser();if(!user)return;user.dailyRecords ||= {};user.dailyRecords[dateKey] ||= {reflection:"",updatedAt:""};const dialog=createDailyDialog();dialog.dataset.dateKey=dateKey;dialog.querySelector("[data-daily-title]").textContent=parseLocalDate(dateKey).toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"});dialog.querySelector("[data-daily-meta]").textContent="Daily timetable · instructional and non-instructional events";const alerts=dailyAlertsFor(user,dateKey);dialog.querySelector("[data-daily-alerts]").innerHTML=`${alerts.alerts.length?`<div class="daily-notice-group"><strong>For this day</strong>${alerts.alerts.map(a=>`<span>• ${escapeHTML(a)}</span>`).join("")}</div>`:""}${alerts.weekly.length?`<details><summary>This week / general notifications</summary>${alerts.weekly.map(a=>`<span>• ${escapeHTML(a)}</span>`).join("")}</details>`:""}`;dialog.querySelector("[data-daily-content]").innerHTML=dailyContentHTML(user,dateKey);const reflection=dialog.querySelector("[data-daily-reflection]");reflection.value=user.dailyRecords[dateKey].reflection||"";reflection.disabled=readOnlyMode;let timer;reflection.oninput=()=>{if(readOnlyMode)return;clearTimeout(timer);timer=setTimeout(()=>{user.dailyRecords[dateKey].reflection=reflection.value;user.dailyRecords[dateKey].updatedAt=new Date().toISOString();saveData();dialog.querySelector("[data-daily-saved]").textContent="Saved";},250);};dialog.querySelector("[data-daily-print-view]").onclick=()=>openDailyPrint(dateKey,false);dialog.querySelector("[data-daily-download]").onclick=()=>openDailyPrint(dateKey,true);dialog.showModal();}
 

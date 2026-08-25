@@ -80,6 +80,13 @@
         contextMode: "generic",
         context: "",
         savedContextId: "",
+        cohortContext: {
+          cohortId: "",
+          cultureIds: [],
+          schoolSettingIds: [],
+          classroomSettingId: "",
+          complexitiesIds: []
+        },
         continuationFromLessonId: "",
         inheritedSnapshot: null
       },
@@ -179,6 +186,13 @@
         contextMode: ["custom", "saved"].includes(general.contextMode) ? general.contextMode : "generic",
         context: String(general.context || ""),
         savedContextId: String(general.savedContextId || ""),
+        cohortContext: {
+          cohortId: String(general.cohortContext?.cohortId || ""),
+          cultureIds: unique(general.cohortContext?.cultureIds),
+          schoolSettingIds: unique(general.cohortContext?.schoolSettingIds),
+          classroomSettingId: String(general.cohortContext?.classroomSettingId || ""),
+          complexitiesIds: unique(general.cohortContext?.complexitiesIds)
+        },
         continuationFromLessonId: String(general.continuationFromLessonId || ""),
         inheritedSnapshot: general.inheritedSnapshot && typeof general.inheritedSnapshot === "object"
           ? structuredCloneSafe(general.inheritedSnapshot)
@@ -489,6 +503,69 @@
     section.appendChild(card);
   }
 
+  function teachingClassForUnit(user, unit) {
+    if (!user || !unit) return null;
+    return window.TeacherHQClasses?.classById?.(user, unit.classId)
+      || (user.classes || []).find(item => item.id === unit.classId)
+      || null;
+  }
+
+  function cohortForUnit(user, unit) {
+    const teachingClass = teachingClassForUnit(user, unit);
+    if (!teachingClass) return null;
+    return window.TeacherHQClasses?.cohortForClass?.(user, teachingClass)
+      || (user.cohorts || []).find(item => item.id === teachingClass.cohortId)
+      || null;
+  }
+
+  function ensureLessonCohortContext(plan, cohort) {
+    if (!plan?.general) return false;
+    const current = plan.general.cohortContext && typeof plan.general.cohortContext === "object"
+      ? plan.general.cohortContext
+      : {};
+    if (!cohort) {
+      if (!plan.general.cohortContext) {
+        plan.general.cohortContext = { cohortId: "", cultureIds: [], schoolSettingIds: [], classroomSettingId: "", complexitiesIds: [] };
+        return true;
+      }
+      return false;
+    }
+    if (current.cohortId === cohort.id) return false;
+    const defaults = key => (cohort.context?.[key] || []).filter(item => item.useByDefault !== false).map(item => item.id);
+    const classroom = (cohort.context?.classroomSetting || []).find(item => item.useByDefault)
+      || (cohort.context?.classroomSetting || [])[0]
+      || null;
+    plan.general.cohortContext = {
+      cohortId: cohort.id,
+      cultureIds: defaults("culture"),
+      schoolSettingIds: defaults("schoolSetting"),
+      classroomSettingId: classroom?.id || "",
+      complexitiesIds: defaults("complexities")
+    };
+    return true;
+  }
+
+  function cohortContextPrintHTML(user, unit, plan) {
+    const cohort = cohortForUnit(user, unit);
+    if (!cohort || plan.general?.cohortContext?.cohortId !== cohort.id) return "";
+    const selected = plan.general.cohortContext;
+    const sections = [
+      ["Culture", "culture", selected.cultureIds],
+      ["School Setting", "schoolSetting", selected.schoolSettingIds],
+      ["Complexities", "complexities", selected.complexitiesIds]
+    ];
+    const rows = sections.map(([label, key, ids]) => {
+      const wanted = new Set(ids || []);
+      const items = (cohort.context?.[key] || []).filter(item => wanted.has(item.id));
+      if (!items.length) return "";
+      return `<div class="print-note"><strong>${escapePrint(label)}</strong><ul>${items.map(item => `<li>${escapePrint(item.title)}${item.description ? ` — ${escapePrint(item.description)}` : ""}</li>`).join("")}</ul></div>`;
+    }).filter(Boolean);
+    const room = (cohort.context?.classroomSetting || []).find(item => item.id === selected.classroomSettingId);
+    if (room) rows.splice(2, 0, `<div class="print-note"><strong>Classroom Setting</strong><p>${escapePrint(room.title)}${room.description ? ` — ${escapePrint(room.description)}` : ""}</p></div>`);
+    if (!rows.length) return "";
+    return `<h2>Cohort Context</h2><p class="muted">${escapePrint(cohort.name)}</p>${rows.join("")}`;
+  }
+
   function renderGeneralSection(context) {
     const { user, unit, lesson, plan } = context;
     const section = lessonSection("general", "General Information", "The fixed schedule information is already attached to this lesson. Add only the context that helps you teach it.");
@@ -497,32 +574,74 @@
       .filter(item => item.id !== lesson.id && (item.dateKey < lesson.dateKey || (item.dateKey === lesson.dateKey && item.startTime < lesson.startTime)))
       .sort((a, b) => b.dateKey.localeCompare(a.dateKey) || b.startTime.localeCompare(a.startTime));
 
+    const teachingClass = teachingClassForUnit(user, unit);
+    const cohort = cohortForUnit(user, unit);
+    if (ensureLessonCohortContext(plan, cohort)) scheduleLessonSave(unit, plan, lesson);
+    const cohortContext = plan.general.cohortContext || { cohortId: "", cultureIds: [], schoolSettingIds: [], classroomSettingId: "", complexitiesIds: [] };
+
     const grid = document.createElement("div");
     grid.className = "lesson-general-grid";
+    const grades = teachingClass?.grades?.length ? teachingClass.grades : unit.classSpec.grades;
+    const subjects = teachingClass?.subjects?.length ? teachingClass.subjects.join(" + ") : unit.classSpec.subject;
     grid.innerHTML = `
       <label class="lesson-edit-card important"><span>Lesson Title</span><input data-lp-title type="text" value="${escapeHTML(lesson.customTitle || "")}" placeholder="Give this lesson a clear title…" /></label>
-      <div class="lesson-fixed-info"><span>Grade(s)</span><strong>${escapeHTML(gradeDisplay(unit.classSpec.grades))}</strong></div>
-      <div class="lesson-fixed-info"><span>Subject</span><strong>${escapeHTML(unit.classSpec.subject)}</strong></div>
+      ${cohort ? `<div class="lesson-fixed-info"><span>Cohort</span><strong>${escapeHTML(cohort.name)}</strong></div>` : ""}
+      ${teachingClass ? `<div class="lesson-fixed-info"><span>Class</span><strong>${escapeHTML(teachingClass.name)}</strong></div>` : ""}
+      <div class="lesson-fixed-info"><span>Grade(s)</span><strong>${escapeHTML(gradeDisplay(grades))}</strong></div>
+      <div class="lesson-fixed-info"><span>Subject</span><strong>${escapeHTML(subjects)}</strong></div>
       <div class="lesson-fixed-info"><span>Unit</span><strong>${escapeHTML(unit.name)}</strong></div>
       <div class="lesson-fixed-info"><span>Date</span><strong>${escapeHTML(formatLongDate(lesson.dateKey))}</strong></div>
       <div class="lesson-fixed-info"><span>Duration</span><strong>${escapeHTML(hoursLabel(lesson.durationMinutes))}</strong></div>`;
     section.appendChild(grid);
 
+    if (cohort) {
+      const contextCard = document.createElement("div");
+      contextCard.className = "lesson-edit-card lesson-cohort-context-card";
+      const multiModule = (label, key, selectionKey) => {
+        const items = cohort.context?.[key] || [];
+        const selected = new Set(cohortContext[selectionKey] || []);
+        return `<section class="lesson-context-module"><h4>${escapeHTML(label)}</h4><div class="lesson-context-options">${items.length ? items.map(item => `<label class="lesson-context-option"><input type="checkbox" data-lp-cohort-context-key="${escapeHTML(selectionKey)}" value="${escapeHTML(item.id)}" ${selected.has(item.id) ? "checked" : ""} ${readOnlyMode ? "disabled" : ""}/><span><strong>${escapeHTML(item.title)}</strong>${item.description ? `<small>${escapeHTML(item.description)}</small>` : ""}</span></label>`).join("") : '<span class="lesson-context-empty">No saved entries.</span>'}</div></section>`;
+      };
+      const rooms = cohort.context?.classroomSetting || [];
+      contextCard.innerHTML = `
+        <div class="lesson-cohort-context-heading"><div><span>Cohort Context</span><small>Inherited from ${escapeHTML(cohort.name)}. Change selections here only when this lesson is different.</small></div></div>
+        <div class="lesson-cohort-context-grid">
+          ${multiModule("Culture", "culture", "cultureIds")}
+          ${multiModule("School Setting", "schoolSetting", "schoolSettingIds")}
+          <section class="lesson-context-module"><h4>Classroom Setting</h4>${rooms.length ? `<select class="lesson-classroom-select" data-lp-cohort-room ${readOnlyMode ? "disabled" : ""}><option value="">No saved location for this lesson</option>${rooms.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === cohortContext.classroomSettingId ? "selected" : ""}>${escapeHTML(item.title)}${item.useByDefault ? " · usual" : ""}</option>`).join("")}</select>` : '<span class="lesson-context-empty">No saved classroom locations.</span>'}</section>
+          ${multiModule("Complexities", "complexities", "complexitiesIds")}
+        </div>`;
+      section.appendChild(contextCard);
+
+      contextCard.querySelectorAll("[data-lp-cohort-context-key]").forEach(input => {
+        input.addEventListener("change", () => {
+          const key = input.dataset.lpCohortContextKey;
+          const values = [...contextCard.querySelectorAll(`[data-lp-cohort-context-key="${key}"]:checked`)].map(item => item.value);
+          plan.general.cohortContext[key] = values;
+          scheduleLessonSave(unit, plan, lesson);
+        });
+      });
+      contextCard.querySelector("[data-lp-cohort-room]")?.addEventListener("change", event => {
+        plan.general.cohortContext.classroomSettingId = event.target.value;
+        scheduleLessonSave(unit, plan, lesson);
+      });
+    }
+
     const contextCard = document.createElement("div");
     contextCard.className = "lesson-edit-card";
     const savedContexts = Array.isArray(user.savedContexts) ? user.savedContexts : [];
     contextCard.innerHTML = `
-      <div class="lesson-card-title"><div><span>Class Context</span><small>Use a saved classroom context, keep this lesson generic, or write a one-off context.</small></div>
+      <div class="lesson-card-title"><div><span>Additional Lesson Context</span><small>Optional one-off notes that are specific to this lesson and not part of the Cohort profile.</small></div>
         <select data-lp-context-mode>
-          <option value="generic" ${plan.general.contextMode === "generic" ? "selected" : ""}>Generic</option>
+          <option value="generic" ${plan.general.contextMode === "generic" ? "selected" : ""}>None</option>
           <option value="saved" ${plan.general.contextMode === "saved" ? "selected" : ""}>Saved context</option>
           <option value="custom" ${plan.general.contextMode === "custom" ? "selected" : ""}>Add context</option>
         </select>
       </div>
-      <label class="form-field ${plan.general.contextMode === "saved" ? "" : "hidden"}" data-lp-saved-context-wrap><span>Saved classroom</span><select data-lp-saved-context><option value="">Choose saved context…</option>${savedContexts.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === plan.general.savedContextId ? "selected" : ""}>${escapeHTML(item.title)}</option>`).join("")}</select></label>
-      <textarea data-lp-context rows="4" class="${plan.general.contextMode === "generic" ? "hidden" : ""}" placeholder="What should you remember about this class today?">${escapeHTML(plan.general.context)}</textarea>
-      <label class="checkbox-row ${plan.general.contextMode === "custom" ? "" : "hidden"}" data-lp-save-context-wrap><input type="checkbox" data-lp-save-context /><span>Save this classroom context for later</span></label>
-      <label class="form-field hidden" data-lp-context-title-wrap><span>Saved context title</span><input data-lp-context-title type="text" maxlength="80" placeholder="e.g., Grade 4 Math — 4A" /></label>`;
+      <label class="form-field ${plan.general.contextMode === "saved" ? "" : "hidden"}" data-lp-saved-context-wrap><span>Saved context</span><select data-lp-saved-context><option value="">Choose saved context…</option>${savedContexts.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === plan.general.savedContextId ? "selected" : ""}>${escapeHTML(item.title)}</option>`).join("")}</select></label>
+      <textarea data-lp-context rows="4" class="${plan.general.contextMode === "generic" ? "hidden" : ""}" placeholder="What else should you remember for this lesson?">${escapeHTML(plan.general.context)}</textarea>
+      <label class="checkbox-row ${plan.general.contextMode === "custom" ? "" : "hidden"}" data-lp-save-context-wrap><input type="checkbox" data-lp-save-context /><span>Save this context for later</span></label>
+      <label class="form-field hidden" data-lp-context-title-wrap><span>Saved context title</span><input data-lp-context-title type="text" maxlength="80" placeholder="e.g., Computer lab setup" /></label>`;
     section.appendChild(contextCard);
 
     const continuation = document.createElement("div");
@@ -1912,7 +2031,8 @@
     return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapePrint(lessonDisplayTitleForUnit(unit, lesson))}</title><style>
       @page{size:letter;margin:.55in}*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17171a;margin:0;font-size:11px;line-height:1.4}.controls{display:flex;justify-content:flex-end;margin-bottom:16px}.controls button{border:0;background:#1d1d1f;color:#fff;border-radius:10px;padding:10px 15px;font-weight:700}h1{font-size:24px;margin:0 0 4px}h2{font-size:15px;margin:20px 0 8px;border-bottom:2px solid #222;padding-bottom:5px}.meta{color:#666;margin-bottom:15px}.objective-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.objective{border:1.5px solid #222;border-radius:10px;padding:10px;font-size:13px}.objective span{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#666;margin-bottom:4px}.print-curriculum-item{border-left:3px solid #888;padding:7px 9px;margin:6px 0;background:#f7f7f8}.print-curriculum-item small,.print-curriculum-item span{display:block;color:#666}.print-curriculum-item p{margin:4px 0 0}.agenda-summary{margin:0 0 8px;padding-left:18px}.agenda-summary li{margin:3px 0}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #aaa;padding:6px;vertical-align:top}th{background:#f2f2f3;font-size:9px;text-transform:uppercase}td:nth-child(1){width:5%}td:nth-child(2){width:19%}td:nth-child(3){width:8%}td small{display:block;color:#666}.print-note{padding:7px 9px;background:#f5f5f7;border-radius:8px;margin:5px 0}.print-note p{margin:3px 0}.reflection-box{height:4.8in;border:2px solid #333;border-radius:10px;padding:12px}.reflection-box p{white-space:pre-wrap}.page-break{break-before:page}.completion{margin-top:12px}.muted{color:#777}@media print{.controls{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}tr,.print-curriculum-item,.objective{break-inside:avoid}}</style></head><body><div class="controls"><button onclick="window.print()">Print / Save PDF</button></div>
       <h1>${escapePrint(lessonDisplayTitleForUnit(unit, lesson))}</h1><div class="meta">${escapePrint(classLabel(unit.classSpec))} · ${escapePrint(unit.name)} · ${escapePrint(formatLongDate(lesson.dateKey))} · ${escapePrint(formatTime(lesson.startTime))}–${escapePrint(formatTime(lesson.endTime))} · ${escapePrint(hoursLabel(lesson.durationMinutes))}</div>
-      ${plan.general.contextMode !== "generic" && plan.general.context ? `<p><strong>Class context:</strong> ${escapePrint(plan.general.context)}</p>` : ""}
+      ${cohortContextPrintHTML(user, unit, plan)}
+      ${plan.general.contextMode !== "generic" && plan.general.context ? `<p><strong>Additional lesson context:</strong> ${escapePrint(plan.general.context)}</p>` : ""}
       <h2>Curriculum</h2>${printScienceContext(unit, plan.curriculum.contextIds)}${printCurriculum(unit.curriculumLinks?.prerequisite || [], plan.curriculum.priorIds)}${printCurriculum(unit.curriculumLinks?.working || [], plan.curriculum.todayIds)}${printCurriculum(unit.curriculumLinks?.lookingAhead || [], plan.curriculum.lookingAheadIds)}
       ${printProgressions(plan) ? `<h2>Literacy, Numeracy, Career & Competency Progressions</h2>${printProgressions(plan)}` : ""}
       <h2>Objectives</h2><div class="objective-grid"><div class="objective"><span>I can…</span>${escapePrint(plan.objectives.iCan || "—")}</div><div class="objective"><span>Students will…</span>${escapePrint(plan.objectives.studentsWill || "—")}</div></div>

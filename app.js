@@ -4,8 +4,8 @@
    Unit Planner + assessments/rubrics + lesson placeholders + portable backup/read view
 ============================================================ */
 
-const STORAGE_KEY = "teacherHQData_v10";
-const LEGACY_STORAGE_KEYS = ["teacherHQData_v9", "teacherHQData_v8", "teacherHQData_v7", "teacherHQData_v6", "teacherHQData_v5", "teacherHQData_v4", "teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
+const STORAGE_KEY = "teacherHQData_v11";
+const LEGACY_STORAGE_KEYS = ["teacherHQData_v10", "teacherHQData_v9", "teacherHQData_v8", "teacherHQData_v7", "teacherHQData_v6", "teacherHQData_v5", "teacherHQData_v4", "teacherHQData_v3", "teacherHQData_v2", "teacherHQData_v1"];
 
 const DEFAULT_GRADES = [
   "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4",
@@ -153,7 +153,7 @@ const lessonPlaceholderDialog = $("lessonPlaceholderDialog");
 ============================================================ */
 
 function defaultData() {
-  return { schemaVersion: 10, activeUserId: null, users: [], globalTrash: [] };
+  return { schemaVersion: 11, activeUserId: null, users: [], globalTrash: [] };
 }
 
 function loadData() {
@@ -176,7 +176,7 @@ function loadData() {
 
 function normalizeData(data) {
   const normalized = data && typeof data === "object" ? data : defaultData();
-  normalized.schemaVersion = 10;
+  normalized.schemaVersion = 11;
   if (!Array.isArray(normalized.users)) normalized.users = [];
   if (!Array.isArray(normalized.globalTrash)) normalized.globalTrash = [];
   if (!("activeUserId" in normalized)) normalized.activeUserId = null;
@@ -211,7 +211,9 @@ function normalizeUser(user) {
     indigenousResources: Array.isArray(user.indigenousResources)
       ? user.indigenousResources.map(normalizeIndigenousResource)
       : [],
+    cohorts: Array.isArray(user.cohorts) ? user.cohorts : [],
     classes: Array.isArray(user.classes) ? user.classes.map(normalizeTeachingClass) : [],
+    interestReminders: Array.isArray(user.interestReminders) ? user.interestReminders : [],
     savedContexts: Array.isArray(user.savedContexts) ? user.savedContexts : [],
     dailyRecords: user.dailyRecords && typeof user.dailyRecords === "object" ? user.dailyRecords : {},
     trash: Array.isArray(user.trash) ? user.trash : [],
@@ -271,7 +273,8 @@ function normalizeTerm(term) {
     startDate: term.startDate || "",
     endDate: term.endDate || "",
     createdAt: term.createdAt || new Date().toISOString(),
-    updatedAt: term.updatedAt || new Date().toISOString()
+    updatedAt: term.updatedAt || new Date().toISOString(),
+    archivedAt: term.archivedAt || null
   };
 
   if (!Array.isArray(normalized.scheduleVersions)) {
@@ -336,22 +339,32 @@ function normalizeException(item) {
 
 function normalizeTeachingClass(item) {
   const grades = normalizeGradeArray(Array.isArray(item?.grades) ? item.grades : []);
+  const primarySubject = String(item?.subject || item?.subjects?.[0] || "").trim();
+  const subjects = [...new Set((Array.isArray(item?.subjects) ? item.subjects : [primarySubject])
+    .map(value => String(value || "").trim()).filter(Boolean))];
+  if (primarySubject && !subjects.includes(primarySubject)) subjects.unshift(primarySubject);
+  const assignments = Array.isArray(item?.curriculumAssignments) && item.curriculumAssignments.length
+    ? item.curriculumAssignments.map(entry => ({
+        grade: String(entry?.grade || "").trim(),
+        subject: String(entry?.subject || primarySubject).trim()
+      })).filter(entry => entry.grade && entry.subject)
+    : grades.flatMap(grade => subjects.map(subject => ({ grade, subject })));
+  const defaultLabel = `${gradeDisplay(grades)} ${subjects.join(" + ")}`.trim();
   return {
     id: item?.id || makeId("class"),
-    name: String(item?.name || classLabel({ grades, subject: item?.subject || "" }) || "Class").trim(),
+    cohortId: String(item?.cohortId || ""),
+    name: String(item?.name || defaultLabel || "Class").trim(),
+    nameIsCustom: typeof item?.nameIsCustom === "boolean" ? item.nameIsCustom : Boolean(item?.name && item.name !== defaultLabel),
     grades,
-    subject: String(item?.subject || "").trim(),
-    studentCount: Math.max(0, Number(item?.studentCount) || 0),
+    subject: primarySubject,
+    subjects,
+    legacyStudentCount: Math.max(0, Number(item?.legacyStudentCount ?? item?.studentCount) || 0),
     description: String(item?.description || ""),
     notes: String(item?.notes || ""),
     colour: normalizeHexColour(item?.colour) || "",
-    curriculumAssignments: Array.isArray(item?.curriculumAssignments)
-      ? item.curriculumAssignments.map(entry => ({
-          grade: String(entry?.grade || "").trim(),
-          subject: String(entry?.subject || item?.subject || "").trim()
-        })).filter(entry => entry.grade && entry.subject)
-      : grades.map(grade => ({ grade, subject: String(item?.subject || "").trim() })).filter(entry => entry.subject),
+    curriculumAssignments: assignments,
     coverageOverrides: item?.coverageOverrides && typeof item.coverageOverrides === "object" ? { ...item.coverageOverrides } : {},
+    archivedAt: item?.archivedAt || null,
     createdAt: item?.createdAt || new Date().toISOString(),
     updatedAt: item?.updatedAt || new Date().toISOString()
   };
@@ -596,7 +609,9 @@ function normalizeUnitWorkspace(workspace) {
     simulation: {
       enabled: typeof simulation.enabled === "boolean" ? simulation.enabled : null,
       title: String(simulation.title || "").trim(),
-      description: String(simulation.description || "").trim()
+      description: String(simulation.description || "").trim(),
+      useCohortInterests: Boolean(simulation.useCohortInterests),
+      interestTags: Array.isArray(simulation.interestTags) ? [...new Set(simulation.interestTags.map(String))] : []
     },
     project: {
       enabled: typeof project.enabled === "boolean" ? project.enabled : null,
@@ -634,6 +649,7 @@ function normalizeLesson(lesson) {
     termId: lesson.termId || "",
     versionId: lesson.versionId || "",
     blockId: lesson.blockId || "",
+    classId: String(lesson.classId || ""),
     classSpec: lesson.classSpec || { grades: [], subject: "" },
     lessonPlanStatus: lesson.lessonPlanStatus || "placeholder",
     locked: Boolean(lesson.locked),
@@ -787,8 +803,9 @@ function classLabel(classSpec) {
   return `${gradeDisplay(classSpec?.grades || [])} ${classSpec?.subject || ""}`.trim();
 }
 
-function classMatches(block, classSpec) {
+function classMatches(block, classSpec, classId = "") {
   if (!block || !classSpec || block.blockType !== "Instructional Time") return false;
+  if (classId && block.classId) return block.classId === classId;
   return classKey({ grades: block.grades, subject: block.subject }) === classKey(classSpec);
 }
 
@@ -809,6 +826,10 @@ function parseManualGrades(value) {
 }
 
 function termsForDate(dateKey, user = getActiveUser()) {
+  return user?.terms?.filter(term => !term.archivedAt && isDateWithin(dateKey, term.startDate, term.endDate)) || [];
+}
+
+function calendarTermsForDate(dateKey, user = getActiveUser()) {
   return user?.terms?.filter(term => isDateWithin(dateKey, term.startDate, term.endDate)) || [];
 }
 
@@ -1005,7 +1026,7 @@ function renderTeacherHQ() {
   renderWeeklyInstructionalBlocks(user);
   renderUnitOverview(user);
   renderBackupState(user);
-  renderPDAttention(user);
+  if (pdAlert) pdAlert.classList.add("hidden");
   applyReadOnlyUI();
 }
 
@@ -1169,11 +1190,13 @@ function resizeImageForStorage(file) {
 function renderActiveTermsLabel(user) {
   const label = $("activeTermsLabel");
   const todayKey = getLocalDateKey();
-  const active = termsForDate(todayKey, user);
+  const activeTerms = (user.terms || []).filter(term => !term.archivedAt);
+  const active = activeTerms.filter(term => isDateWithin(todayKey, term.startDate, term.endDate));
   if (user.terms.length === 0) {
     label.textContent = "No school terms yet.";
   } else if (active.length === 0) {
-    label.textContent = `${user.terms.length} saved school term${user.terms.length === 1 ? "" : "s"}.`;
+    const archivedCount = (user.terms || []).filter(term => term.archivedAt).length;
+    label.textContent = `${activeTerms.length} active school term${activeTerms.length === 1 ? "" : "s"}${archivedCount ? ` · ${archivedCount} finished` : ""}.`;
   } else if (active.length === 1) {
     label.textContent = `Current term: ${active[0].name}`;
   } else {
@@ -1366,13 +1389,14 @@ function renderTermSummaries(user) {
   user.terms.forEach(term => {
     const card = document.createElement("div");
     card.className = "term-summary-card";
-    if (isDateWithin(todayKey, term.startDate, term.endDate)) card.classList.add("current");
+    if (!term.archivedAt && isDateWithin(todayKey, term.startDate, term.endDate)) card.classList.add("current");
     if (term.endDate < todayKey) card.classList.add("past-term");
+    if (term.archivedAt) card.classList.add("archived-record");
     const name = document.createElement("strong");
-    name.textContent = term.name;
+    name.textContent = `${term.archivedAt ? "✓ " : ""}${term.name}`;
     const meta = document.createElement("div");
     meta.className = "term-summary-meta";
-    meta.textContent = `${formatDate(term.startDate)} – ${formatDate(term.endDate)} · ${term.scheduleVersions.length} schedule version${term.scheduleVersions.length === 1 ? "" : "s"}`;
+    meta.textContent = `${formatDate(term.startDate)} – ${formatDate(term.endDate)} · ${term.scheduleVersions.length} schedule version${term.scheduleVersions.length === 1 ? "" : "s"}${term.archivedAt ? " · Finished" : ""}`;
     card.append(name, meta);
     container.appendChild(card);
   });
@@ -1390,13 +1414,13 @@ function renderTermsList(user) {
 
   user.terms.forEach(term => {
     const card = document.createElement("div");
-    card.className = "term-card";
+    card.className = `term-card ${term.archivedAt ? "archived-record" : ""}`;
     const info = document.createElement("div");
     const name = document.createElement("strong");
-    name.textContent = term.name;
+    name.textContent = `${term.archivedAt ? "✓ " : ""}${term.name}`;
     const meta = document.createElement("div");
     meta.className = "term-meta";
-    meta.textContent = `${formatDate(term.startDate)} – ${formatDate(term.endDate)} · ${term.scheduleVersions.length} schedule version${term.scheduleVersions.length === 1 ? "" : "s"}`;
+    meta.textContent = `${formatDate(term.startDate)} – ${formatDate(term.endDate)} · ${term.scheduleVersions.length} schedule version${term.scheduleVersions.length === 1 ? "" : "s"}${term.archivedAt ? " · Finished" : ""}`;
     info.append(name, meta);
     card.appendChild(info);
     if (!readOnlyMode) {
@@ -1419,7 +1443,17 @@ function renderTermsList(user) {
         saveData();
         renderTeacherHQ();
       });
-      actions.append(edit, remove);
+      const archive = document.createElement("button");
+      archive.type = "button";
+      archive.className = "secondary-button";
+      archive.textContent = term.archivedAt ? "Reactivate" : "Mark Finished";
+      archive.addEventListener("click", () => {
+        term.archivedAt = term.archivedAt ? null : new Date().toISOString();
+        term.updatedAt = new Date().toISOString();
+        saveData();
+        renderTeacherHQ();
+      });
+      actions.append(edit, archive, remove);
       card.appendChild(actions);
     }
     container.appendChild(card);
@@ -1971,7 +2005,7 @@ function getOccurrencesForDate(date, user = getActiveUser()) {
 
   const weekday = WEEKDAYS[date.getDay()];
   const occurrences = [];
-  termsForDate(dateKey, user).forEach(term => {
+  calendarTermsForDate(dateKey, user).forEach(term => {
     const version = getScheduleVersionForDate(term, dateKey);
     if (!version) return;
     version.scheduleBlocks
@@ -2111,17 +2145,24 @@ function occurrenceSummary(occurrence) {
 
 function countFutureAttentionItems(user) {
   const todayKey = getLocalDateKey();
-  const termEndDates = user.terms.map(term => term.endDate).filter(Boolean).sort();
+  const activeTerms = (user.terms || []).filter(term => !term.archivedAt);
+  const termEndDates = activeTerms.map(term => term.endDate).filter(Boolean).sort();
   if (termEndDates.length === 0) return { unplanned: 0, conflicts: 0 };
   const latestEnd = termEndDates.at(-1);
-  const futureStarts = user.terms.map(term => term.startDate).filter(date => date >= todayKey).sort();
-  const startKey = user.terms.some(term => isDateWithin(todayKey, term.startDate, term.endDate)) ? todayKey : futureStarts[0] || todayKey;
+  const futureStarts = activeTerms.map(term => term.startDate).filter(date => date >= todayKey).sort();
+  const startKey = activeTerms.some(term => isDateWithin(todayKey, term.startDate, term.endDate)) ? todayKey : futureStarts[0] || todayKey;
   let date = parseLocalDate(startKey);
   const end = parseLocalDate(latestEnd);
   let unplanned = 0;
   let conflicts = 0;
   while (date <= end) {
-    const occurrences = getOccurrencesForDate(date, user);
+    const occurrences = getOccurrencesForDate(date, user).filter(item => {
+      const term = (user.terms || []).find(entry => entry.id === item.termId);
+      if (term?.archivedAt) return false;
+      if (item.block.blockType !== "Instructional Time") return true;
+      const teachingClass = (user.classes || []).find(entry => entry.id === item.block.classId);
+      return !teachingClass?.archivedAt;
+    });
     unplanned += occurrences.filter(item => item.block.blockType === "Instructional Time" && !item.planned).length;
     conflicts += getConflictPairCount(occurrences);
     date.setDate(date.getDate() + 1);
@@ -2592,10 +2633,11 @@ function populateUnitClassSelect() {
   select.innerHTML = '<option value="">Select a class</option>';
   getClassOptions(user).forEach(spec => {
     const option = document.createElement("option");
-    option.value = classKey(spec);
-    option.textContent = classLabel(spec);
+    option.value = spec.classId || spec.id || classKey(spec);
+    option.textContent = spec.name || classLabel(spec);
     option.dataset.grades = JSON.stringify(spec.grades);
     option.dataset.subject = spec.subject;
+    option.dataset.subjects = JSON.stringify(spec.subjects || [spec.subject].filter(Boolean));
     option.dataset.classId = spec.classId || spec.id || "";
     select.appendChild(option);
   });
@@ -2604,8 +2646,9 @@ function populateUnitClassSelect() {
 function selectExistingUnitClass() {
   const select = $("unitClassSelect");
   const key = classKey(unitDraft.classSpec);
-  const option = [...select.options].find(item => item.value === key);
-  if (option) select.value = key;
+  const option = [...select.options].find(item => unitDraft.classId && item.dataset.classId === unitDraft.classId)
+    || [...select.options].find(item => !item.dataset.classId && item.value === key);
+  if (option) select.value = option.value;
   renderUnitClassSummary();
 }
 
@@ -2735,7 +2778,7 @@ function validateAllocationStep() {
   const calculatedAvailable = calculateAvailableMinutesForClass(
     user,
     unitDraft.classSpec,
-    editingUnitId
+    unitDraft.classId || ""
   );
 
   if (hasManualTime) {
@@ -2794,7 +2837,7 @@ function updateAllocationSummary() {
   const available = calculateAvailableMinutesForClass(
     user,
     unitDraft.classSpec,
-    editingUnitId
+    unitDraft.classId || ""
   );
 
   $("manualAvailableHoursField").classList.toggle("hidden", available > 0);
@@ -3672,12 +3715,13 @@ function refreshCurriculumSelectAllStates() {
 ============================================================ */
 
 function getRelevantDateRange(user) {
-  const starts = user.terms.map(term => term.startDate).filter(Boolean).sort();
-  const ends = user.terms.map(term => term.endDate).filter(Boolean).sort();
+  const activeTerms = (user.terms || []).filter(term => !term.archivedAt);
+  const starts = activeTerms.map(term => term.startDate).filter(Boolean).sort();
+  const ends = activeTerms.map(term => term.endDate).filter(Boolean).sort();
   return starts.length && ends.length ? { start: starts[0], end: ends.at(-1) } : null;
 }
 
-function calculateAvailableMinutesForClass(user, classSpec) {
+function calculateAvailableMinutesForClass(user, classSpec, classId = "") {
   const range = getRelevantDateRange(user);
   if (!range) return 0;
   let date = parseLocalDate(range.start);
@@ -3685,7 +3729,7 @@ function calculateAvailableMinutesForClass(user, classSpec) {
   let total = 0;
   while (date <= end) {
     const occurrences = dedupeClassOccurrences(
-      getOccurrencesForDate(date, user).filter(item => classMatches(item.block, classSpec))
+      getOccurrencesForDate(date, user).filter(item => classMatches(item.block, classSpec, classId))
     );
     occurrences.forEach(item => {
       total += durationMinutes(item.block.startTime, item.block.endTime);
@@ -3698,14 +3742,15 @@ function calculateAvailableMinutesForClass(user, classSpec) {
 function dedupeClassOccurrences(occurrences) {
   const map = new Map();
   occurrences.forEach(item => {
-    const key = `${item.dateKey}|${item.block.startTime}|${item.block.endTime}|${classKey({ grades: item.block.grades, subject: item.block.subject })}`;
+    const identity = item.block.classId || classKey({ grades: item.block.grades, subject: item.block.subject });
+    const key = `${item.dateKey}|${item.block.startTime}|${item.block.endTime}|${identity}`;
     if (!map.has(key)) map.set(key, item);
   });
   return [...map.values()].sort((a, b) => a.block.startTime.localeCompare(b.block.startTime));
 }
 
 function lessonOccurrenceKey(lesson) {
-  return `${lesson.dateKey}|${lesson.startTime}|${lesson.endTime}|${classKey(lesson.classSpec)}`;
+  return `${lesson.dateKey}|${lesson.startTime}|${lesson.endTime}|${lesson.classId || classKey(lesson.classSpec)}`;
 }
 
 function occurrenceAllocationKey(occurrence) {
@@ -3915,7 +3960,7 @@ function renderUnitCalendar() {
 
       const matching = dedupeClassOccurrences(
         getOccurrencesForDate(date, user)
-          .filter(item => classMatches(item.block, unitDraft.classSpec))
+          .filter(item => classMatches(item.block, unitDraft.classSpec, unitDraft.classId || ""))
       );
 
       const available = matching.filter(
@@ -3984,7 +4029,7 @@ function allocateLessons(unit, user, startDateKey, excludeUnitId = null, preserv
     const dateKey = getLocalDateKey(date);
     if (!isNoSchoolDate(user, dateKey)) {
       const occurrences = dedupeClassOccurrences(
-        getOccurrencesForDate(date, user).filter(item => classMatches(item.block, unit.classSpec))
+        getOccurrencesForDate(date, user).filter(item => classMatches(item.block, unit.classSpec, unit.classId || ""))
       );
       for (const occurrence of occurrences) {
         if (scheduledMinutes >= unit.targetMinutes) break;
@@ -4005,6 +4050,7 @@ function allocateLessons(unit, user, startDateKey, excludeUnitId = null, preserv
           termId: occurrence.termId,
           versionId: occurrence.versionId,
           blockId: occurrence.blockId,
+          classId: unit.classId || occurrence.block.classId || "",
           classSpec: structuredCloneSafe(unit.classSpec),
           lessonPlanStatus: "placeholder",
           locked: false,
@@ -5146,6 +5192,21 @@ function renderWorkspaceCurriculumPicker(unit, relation, container) {
 
 function renderUnitWorkspaceSimulation(unit, container) {
   const simulation = unit.workspace.simulation;
+  const user = getActiveUser();
+  const teachingClass = user && window.TeacherHQClasses?.classById?.(user, unit.classId);
+  const cohort = teachingClass && window.TeacherHQClasses?.cohortForClass?.(user, teachingClass);
+  const interests = cohort ? (window.TeacherHQClasses?.interestSummary?.(cohort) || []) : [];
+  const selectedInterests = new Set((simulation.interestTags || []).map(tag => String(tag).toLowerCase()));
+
+  const interestPanel = cohort ? `
+    <div class="simulation-interest-panel">
+      <label class="checkbox-row"><input type="checkbox" data-sim-use-interests ${simulation.useCohortInterests ? "checked" : ""}/><span><strong>Use Cohort Interests for Inspiration</strong></span></label>
+      <p>Draw on ${escapeHTML(cohort.name)}'s interest tags when shaping roles, scenarios, examples or themes. Interests are inspiration only; they do not automatically determine the simulation.</p>
+      ${interests.length ? `<div class="simulation-interest-tags ${simulation.useCohortInterests ? "" : "hidden"}" data-sim-interest-tags>${interests.map(item => `<button type="button" class="simulation-interest-tag ${selectedInterests.has(item.tag.toLowerCase()) ? "selected" : ""}" data-interest-tag="${escapeHTML(item.tag)}" ${simulation.useCohortInterests ? "" : "disabled"}>${escapeHTML(item.tag)} <span>${item.count}</span></button>`).join("")}</div>` : `<div class="workspace-disabled-note">No student-interest tags are recorded for this Cohort yet.</div>`}
+    </div>` : `
+    <div class="simulation-interest-panel">
+      <p>Link this Unit to a Class with a Cohort to use anonymous student-interest tags for simulation inspiration.</p>
+    </div>`;
 
   container.innerHTML = `
     <div class="workspace-editor-card">
@@ -5163,6 +5224,7 @@ function renderUnitWorkspaceSimulation(unit, container) {
       <div id="simulationFields" class="${simulation.enabled === false ? "hidden" : ""}">
         <label class="form-field"><span>Simulation Title</span><input id="simulationTitleInput" type="text" value="${escapeHTML(simulation.title)}" placeholder="e.g., Run a community grocery store" /></label>
         <label class="form-field"><span>Description</span><textarea id="simulationDescriptionInput" rows="7" placeholder="Describe what students will experience, the roles they take, and how the simulation develops through the unit.">${escapeHTML(simulation.description)}</textarea></label>
+        ${interestPanel}
       </div>
       ${simulation.enabled === false ? '<div class="workspace-disabled-note">No interactive simulation for this unit.</div>' : ""}
     </div>`;
@@ -5190,6 +5252,25 @@ function renderUnitWorkspaceSimulation(unit, container) {
   description?.addEventListener("input", () => {
     simulation.description = description.value;
     autosaveUnit(unit);
+  });
+
+  container.querySelector("[data-sim-use-interests]")?.addEventListener("change", event => {
+    simulation.useCohortInterests = event.target.checked;
+    autosaveUnit(unit);
+    renderUnitWorkspacePanel(unit, "simulation");
+  });
+
+  container.querySelectorAll("[data-interest-tag]").forEach(button => {
+    button.addEventListener("click", () => {
+      const tag = button.dataset.interestTag;
+      const current = new Map((simulation.interestTags || []).map(item => [String(item).toLowerCase(), String(item)]));
+      const key = String(tag).toLowerCase();
+      if (current.has(key)) current.delete(key);
+      else current.set(key, tag);
+      simulation.interestTags = [...current.values()];
+      autosaveUnit(unit);
+      button.classList.toggle("selected", current.has(key));
+    });
   });
 }
 
@@ -7310,7 +7391,7 @@ function buildReadableExportHTML(user, { title, includeRestoreData, includeReadO
     ? `<script id="teacherHQBackupData" type="application/json">${safeJSONForScript(fullAppData)}</script>`
     : "";
   const embeddedReadOnly = includeReadOnlyData
-    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 10, user })}</script>`
+    ? `<script id="teacherHQReadOnlyData" type="application/json">${safeJSONForScript({ kind: "teacher-hq-readonly-share", schemaVersion: 11, user })}</script>`
     : "";
 
   return `<!DOCTYPE html>

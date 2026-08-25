@@ -1,63 +1,90 @@
-# Teacher HQ — Combined E1–E4 Release Notes
+# Teacher HQ — Cohort Architecture Update
 
-## Curriculum / data
-- Added Social Studies K–9.
-- Added Career Education & Financial Literacy Grades 7–9.
-- Added Literacy, Numeracy, Career and Competency progression datasets.
-- Added unified curriculum/progression registry.
-- Curriculum database total: 10,316 unique curriculum records.
-- Progression database total: 380 unique progression records.
-- Social Studies K contains only the authentic Organizing Ideas supplied in the source; missing detail is not invented.
-- Grade 7 Career Education contains only the authentic Organizing Ideas supplied in the source; missing detail is not invented.
+## Core terminology / hierarchy
+Teacher HQ now uses the planning hierarchy:
 
-## Classes Taught
-- Persistent Class records separate grade/subject identity from weekly schedule timing.
-- Instructional schedule blocks may reference Classes.
-- Class course colours are reusable on Overview / Full Calendar.
-- Class Dashboard includes Calendar, Units, Lessons, Curriculum Progress, Assessments, Resources and Context.
-- Coverage can distinguish Planned, Introduced, Developing, Taught, Assessed and Covered, with teacher override.
+`Teacher HQ → Cohort → Class → Unit → Lesson`
 
-## Curriculum / progression navigation
-- Curriculum lookup trees start collapsed.
-- Split-grade Curriculum Browser supports 2–4 grades.
-- Progression Browser exposes Literacy, Numeracy, Career and Competency frameworks.
-- Lesson Planner combines these under one progression section with Develop / Practise / Observe intent.
+- **Cohort** = a particular collection of students.
+- **Class** = a course/subject taught to one Cohort. A Class may use one or more grades and one or more subjects.
+- **Unit** = a collection of Lessons inside a Class.
+- **Lesson** = one planned instructional period from a Unit for a Cohort.
 
-## Calendar / Daily View
-- Existing Overview Calendar remains on Teacher HQ.
-- Full Calendar is a separate larger workspace.
-- Overview notifications are collapsed into a notification dock.
-- Overview instructional entries use readable one-line titles and course colours; unplanned items keep red attention styling.
-- Daily View includes instructional/non-instructional timetable, relevant alerts and optional Daily Reflection.
-- Shared calendar picker is reused by Assessment, Field Trip and stand-alone Lesson date workflows.
-- Print-Friendly View and downloadable print-friendly HTML are standardized for new daily/lesson/rubric workflows.
+This separates the student group from the course being taught and allows two Cohorts to take the same course as separate Classes with independent pacing, assessment and curriculum coverage.
 
-## Units / Lessons / Field Trips / Assessments
-- Unit Workspace begins with Calendar.
-- Unit Lessons calendar preserves distinct Unit colours while needs-planning state is shown by a red outline.
-- Field Trip date selection is calendar-based and can shift the replaced lesson plus subsequent Unit lessons into the next valid instructional blocks.
-- Field Trip labels use a bus icon and no square-bracket text.
-- Assessment date selection is calendar-based.
-- Assessment history combines formative/summative records chronologically.
-- Stand-alone Lessons can be created outside Units and later attached to a Unit.
-- Saved Lesson Contexts provide reusable classroom descriptions.
+## Cohorts / student profiles
+- Added Cohort management alongside Classes.
+- Creating a Cohort can generate 0–100 anonymous student profiles.
+- Each generated student receives a unique random two-digit code (`00`–`99`) within that Cohort.
+- Student legal names are not required or generated.
+- Optional nickname field is available for local use.
+- Cohort setup can be copied to create a new context without copying student identities/interests.
+- Cohorts can be marked **Finished**, remain available historically, and can later be reactivated.
 
-## Rubrics
-- Existing 1-point and 3-point systems remain.
-- Added 4-point rubric: Starting / Developing / Meeting / Mastery.
-- Rubric heading colours are teacher-editable and intended to correspond to Bloom progression.
-- Curriculum references use a generalized stable/reference-friendly approach rather than assuming every subject has Math-style branch names.
+## Student interests
+- Each anonymous student can have reusable interest tags.
+- Clicking an interest tag allows an optional description to be stored with it.
+- Cohort dashboards show interest data without requiring real student names.
+- Added manual **student-interest reminders**: choose a date, one or more anonymous student IDs, and a reminder message.
+- Due interest reminders appear in the Overview notification system.
+- Simulation planning can optionally use Cohort interest patterns as inspiration without automatically dictating a simulation.
 
-## Resources / Indigenous Voices
-- Resources no longer use the term “renewable resource.”
-- Drive/cloud link field supported.
-- Indigenous resource grade/subject tagging uses cleaner multi-select controls and supports custom grades/subjects.
+## Cohort context
+Added modular point-form context sections:
+- Culture
+- School Setting
+- Classroom Setting
+- Complexities
 
-## Deletion / Trash
-- User-created records use soft-deletion where integrated.
-- Trash items are retained for six months and can be restored or permanently removed.
-- Deleted users are stored as whole-workspace snapshots for meaningful restoration.
-- Expired trash is purged when Teacher HQ next runs; a static browser app cannot wake itself six months later.
+Context entries are reusable modular items rather than one large text field. Classroom Setting supports a usual/default location plus saved alternatives. Lesson Planner inherits the Cohort context and allows a lesson-specific override when the context differs (for example, using the computer lab instead of the usual classroom).
 
-## Known architecture boundary
-Teacher HQ is still local-first and file-backup based. Local profile switching is not strong authentication. Real password-protected multi-device accounts should be implemented later with Firebase Authentication / a backend rather than pretending a local password protects browser storage.
+Individual students can also carry their own anonymous Complexity items separately from Cohort-wide environmental/context factors.
+
+## Classes
+- Every Class is linked to a Cohort.
+- Class name is optional.
+- If no name is entered, Teacher HQ generates a readable name from grade(s) and subject(s), e.g. `Grade 4 Math`.
+- Duplicate generated names are automatically numbered, e.g. `Grade 4 Math - 2`.
+- Split-grade names use compact labels such as `Grade 4/5 Math`.
+- Multiple-subject Classes can use labels such as `Grade 4 Math + Science`.
+- Redesigned grade selection UI.
+- Course colour control is compact, positioned with the Class title, and includes a live colour preview.
+- Curriculum Assignment now shows clean curriculum titles only; record-count clutter was removed.
+- Spacing was improved for multiple curriculum assignments.
+- Empty-state Class management no longer shows a redundant non-working Add Class button.
+- Classes can be copied, marked Finished, reactivated, or deleted to Trash.
+
+## Unit reuse between Classes
+- A Unit can be copied to the same or another active Class.
+- Planning content, curriculum, rubrics, resources and lesson-plan structure are copied.
+- The copied Unit is reallocated into the destination Class's valid instructional blocks from a chosen start date.
+- Old Field Trip and Assessment dates are cleared so copied Units can be adapted safely to the new Cohort/context.
+- Lesson reflections/completion state are reset in the copy.
+
+## Finished / archive behaviour
+- **Cohorts**, **Classes**, and **School Terms** can be marked Finished rather than deleted.
+- Finished Classes/School Terms remain visible in historical calendars and use a `✓` finished marker.
+- Finished records are separated from normal active planning views but remain openable where appropriate.
+- Reactivation is supported.
+- Archive/Finished is separate from Trash: archived records are valid historical work, while Trash is for deletion.
+
+## Overview notifications
+- Removed the redundant second PD-Day notification display under the compact notification system.
+- Notification summary now uses the generic text **Attention required**.
+- Removed the unnecessary “Only Instructional Time is counted” text from the lesson-planning alert.
+- Exclamation icons are larger, heavier, and coloured by notification type.
+- Student-interest reminders participate in the same compact notification drawer.
+
+## Calendar integration
+- Class identity is Class-ID-first, so two Cohorts taking the same subject do not collapse into one course identity.
+- Finished Class/School Term occurrences remain in historical calendars and receive a finished marker.
+- Active-planning notification counts ignore finished Classes and School Terms.
+- Existing Overview Calendar remains; Full Calendar remains the larger calendar workspace.
+
+## Existing curriculum / progression content retained
+- Curriculum registry: **10,316 unique curriculum records**.
+- Progression registry: **380 unique progression records**.
+- Existing Math, Science, ELA, PE, Fine Arts, Social Studies, Career Education & Financial Literacy, Literacy, Numeracy, Competency and Career progression data remain included.
+
+## Local-data boundary
+Teacher HQ remains local-first and file-backup based. Anonymous Student ## codes are intended to let the teacher maintain any real-world identity key separately. Optional nicknames are local data; Teacher HQ does not require them.

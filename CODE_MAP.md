@@ -1,11 +1,16 @@
 # Teacher HQ — Code Map
 
-Teacher HQ is still a static GitHub Pages application, but major systems are now split into named modules to make long-term maintenance and debugging practical.
+Teacher HQ is a static GitHub Pages application with major systems separated into named modules for easier maintenance and debugging.
 
 ## Core application
 - `index.html` — Teacher HQ dashboard and static dialogs.
-- `styles.css` — long-lived/core interface styles.
-- `app.js` — legacy/core data model, School Terms, schedule occurrences, Unit Planner, resources, Field Trips, Assessments and backups.
+- `styles.css` — core interface styles.
+- `app.js` — core data model, profiles, School Terms, schedule history, Units, resources, Field Trips, Assessments, backups and Simulation workspace integration.
+
+## Cohorts / Classes
+- `classes.js` — Cohort + anonymous student model, two-digit student-code generation, optional nicknames, student interests/reminders, modular Cohort context, persistent Classes, Class editor/dashboard, archive state, curriculum coverage and Unit copying.
+- Primary hierarchy: `Teacher HQ → Cohort → Class → Unit → Lesson`.
+- Schedule blocks reference Classes; Classes reference Cohorts.
 
 ## Curriculum data
 - `curriculum-data.js` — Math, Science, ELA and PE curriculum records.
@@ -14,32 +19,27 @@ Teacher HQ is still a static GitHub Pages application, but major systems are now
 - `career-curriculum-data.js` — Career Education & Financial Literacy Grades 7–9.
 - `progressions-data.js` — Literacy, Numeracy, Career and Competency planning progressions.
 - `bloom-data.js` — teacher-supplied Bloom verb reference.
-- `data-registry.js` — unified lookup layer so application logic does not care which physical file owns a curriculum record.
+- `data-registry.js` — unified lookup layer across curriculum/progression files.
 
-## Class / curriculum navigation
-- `classes.js` — persistent Classes Taught, schedule-to-Class linking, Class Dashboard and curriculum coverage calculations.
-- `curriculum-browser.js` — stand-alone Curriculum Browser, split-grade view and Progression Browser. Branches are lazy/collapsed by default.
+## Curriculum / progression navigation
+- `curriculum-browser.js` — stand-alone Curriculum Browser, split-grade view and Progression Browser. Trees begin collapsed.
 
 ## Calendar systems
-- `calendar-tools.js` — rich Overview calendar, compact notification dock, Daily View, shared calendar picker, daily reflection and course colour utilities.
-- `calendar.html` — enlarged Full Calendar page; does not replace Overview.
-- `calendar-page.js` — self-contained Full Calendar logic using the same stored Teacher HQ data.
+- `calendar-tools.js` — Overview calendar, compact notification dock, Daily View, shared calendar picker, Daily Reflection, course colours and archived occurrence handling.
+- `calendar.html` — enlarged Full Calendar page.
+- `calendar-page.js` — Full Calendar logic, Class-ID-first event identity, archive markers and Cohort-interest reminder display.
 - `calendar-page.css` — Full Calendar styles.
 
 ## Lesson / planning systems
-- `lesson-planner.js` — living Lesson Planner, agendas, UDL, curriculum, assessments, reflection, Cognitive Tempo and lesson calendar.
+- `lesson-planner.js` — Lesson Planner including Cohort Context inheritance/overrides, agendas, UDL, curriculum, assessments, reflection, Cognitive Tempo and lesson calendar.
 - `lesson-planner.css` — Lesson Planner styles.
-- `mega-features.js` — cross-system integration: stand-alone lessons, reusable saved contexts, progression planning, Field Trip lesson shifting, 4-point rubric additions and final dashboard enhancements.
-- `mega-features.css` — styles for Classes, Browsers, Trash, enhanced calendars, rubric additions and other newer UI components.
+- `mega-features.js` — cross-system features such as stand-alone Lessons, reusable saved contexts, progression planning, Field Trip lesson shifting and 4-point rubric support.
+- `mega-features.css` — newer UI components including Cohorts/Classes, notifications, archive states, grade/colour controls, calendars and rubric additions.
 
 ## Safety / deletion
-- `trash.js` — six-month soft deletion, restore/permanent delete logic and deleted-user workspace support.
+- `trash.js` — six-month soft deletion, restore/permanent delete logic, Cohort/Class relationship restoration and deleted-user workspace support.
 
 ## Data philosophy
-Curriculum and planning-progressions are intentionally different types of records. Curriculum can participate in Unit/Lesson/Assessment coverage. Progression descriptors are planning supports and can be tagged Develop / Practise / Observe without pretending they are separate programs of study.
+Curriculum and planning progressions are intentionally separate. Curriculum can participate in Unit/Lesson/Assessment coverage. Progression descriptors are planning supports with Develop / Practise / Observe intent.
 
-The primary navigation/data hierarchy is now:
-
-`Teacher HQ → Class → Unit → Lesson`
-
-School Terms describe when Classes meet; changing a School Term should not redefine the Class itself.
+Cohort is the student-group identity. Class is the course identity. School Terms describe when Classes meet; finishing a School Term does not delete its historical calendar.

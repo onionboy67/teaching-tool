@@ -53,6 +53,7 @@
 
   function collectionFor(user, entry) {
     const meta = entry.restoreMeta || {};
+    if (meta.parent === "user.cohorts") return user.cohorts ||= [];
     if (meta.parent === "user.classes") return user.classes ||= [];
     if (meta.parent === "user.units") return user.units ||= [];
     if (meta.parent === "user.resources" || meta.parent === "user.resourceLibrary") return user.resourceLibrary ||= [];
@@ -102,6 +103,16 @@
         const version = term?.scheduleVersions?.find(item => item.id === ref.versionId);
         const block = version?.scheduleBlocks?.find(item => item.id === ref.blockId);
         if (block) block.classId = entry.data.id;
+      });
+    }
+    if (entry.kind === "cohort") {
+      (meta.classIds || []).forEach(classId => {
+        const teachingClass = (user.classes || []).find(item => item.id === classId);
+        if (teachingClass) teachingClass.cohortId = entry.data.id;
+      });
+      user.interestReminders ||= [];
+      (meta.reminders || []).forEach(reminder => {
+        if (!user.interestReminders.some(item => item.id === reminder.id)) user.interestReminders.push(clone(reminder));
       });
     }
     if (entry.kind === "resource") {
@@ -242,11 +253,11 @@
   }
 
   function labelFor(kind) {
-    return ({ unit: "Unit", lesson: "Lesson", assessment: "Assessment", resource: "Resource", fieldTrip: "Field Trip", class: "Class", context: "Context", modality: "Learning Modality", indigenousResource: "Indigenous Resource", calendarException: "Day Off / PD Day", term: "School Term" })[kind] || kind;
+    return ({ unit: "Unit", lesson: "Lesson", assessment: "Assessment", resource: "Resource", fieldTrip: "Field Trip", cohort: "Cohort", class: "Class", context: "Context", modality: "Learning Modality", indigenousResource: "Indigenous Resource", calendarException: "Day Off / PD Day", term: "School Term" })[kind] || kind;
   }
 
   function iconFor(kind) {
-    return ({ unit: "▦", lesson: "📝", assessment: "✓", resource: "↗", fieldTrip: "🚌", class: "◉", context: "☰", modality: "◇", indigenousResource: "◆", calendarException: "🌴", term: "▣" })[kind] || "⌫";
+    return ({ unit: "▦", lesson: "📝", assessment: "✓", resource: "↗", fieldTrip: "🚌", cohort: "◎", class: "◉", context: "☰", modality: "◇", indigenousResource: "◆", calendarException: "🌴", term: "▣" })[kind] || "⌫";
   }
 
   function deleteUser(userId) {
