@@ -1,0 +1,26 @@
+{
+  "social": {
+    "Kindergarten": 3,
+    "Grade 1": 34,
+    "Grade 2": 52,
+    "Grade 3": 78,
+    "Grade 4": 55,
+    "Grade 5": 50,
+    "Grade 6": 66,
+    "Grade 7": 105,
+    "Grade 8": 94,
+    "Grade 9": 131
+  },
+  "career": {
+    "Grade 7": 3,
+    "Grade 8": 89,
+    "Grade 9": 97
+  },
+  "progressions": {
+    "Literacy": 94,
+    "Numeracy": 113,
+    "Competency": 141,
+    "Career": 32
+  },
+  "totalProgressions": 380
+}
