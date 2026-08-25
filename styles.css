@@ -3922,3 +3922,54 @@ input[type="date"] {
   display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px;
   background: #fff0f3; color: #a61b36; border: 1px solid #ffc2cf; font-size: 0.72rem; font-weight: 800;
 }
+
+
+/* ============================================================
+   FINE ARTS + COLLAPSED CURRICULUM TREE
+============================================================ */
+.fine-arts-grade > summary,
+.fine-arts-branch > summary {
+  min-height: 58px;
+}
+.fine-arts-branch {
+  margin: 8px 0 8px 18px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+.fine-arts-depth-0 { margin-left: 12px; }
+.fine-arts-depth-1 { margin-left: 20px; }
+.fine-arts-depth-2 { margin-left: 28px; }
+.fine-arts-depth-3,
+.fine-arts-depth-4 { margin-left: 34px; }
+.fine-arts-leaf-group { margin: 10px 12px 14px; }
+.fine-arts-program-rule {
+  display: grid;
+  gap: 4px;
+  margin: 10px 14px 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 193, 7, .12);
+  border: 1px solid rgba(190, 135, 0, .2);
+  color: var(--text-secondary, #5f5f64);
+}
+.fine-arts-program-rule strong { color: var(--text-primary, #1d1d1f); }
+.curriculum-status-badge,
+.curriculum-assessment-target,
+.curriculum-overview-only {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .01em;
+  background: rgba(0,0,0,.055);
+  color: #55555b;
+}
+.curriculum-assessment-target { background: rgba(94, 92, 230, .11); color: #4d4bc4; }
+.curriculum-overview-only { background: rgba(142, 142, 147, .13); color: #636366; }
+.status-required, .status-core, .status-required-framework { background: rgba(52, 199, 89, .12); color: #21883c; }
+.status-elective, .status-teacher-choice, .status-teacher-selected-module { background: rgba(255, 159, 10, .13); color: #a66000; }
+.status-optional-competency { background: rgba(175, 82, 222, .11); color: #7b37a4; }
+.workspace-curriculum-browser > details { margin-bottom: 12px; }

@@ -19,9 +19,15 @@ const FUN_UNIT_COLOURS = [
   "#6EDB3F", "#FF7043", "#00B8D9", "#FFC93C", "#A45CFF", "#00C48C",
   "#FF4D6D", "#5B8CFF", "#FF8A3D", "#2DD4BF", "#C45CFF", "#A6E22E"
 ];
-const CURRICULUM = Array.isArray(window.TEACHER_HQ_CURRICULUM)
+const CORE_CURRICULUM = Array.isArray(window.TEACHER_HQ_CURRICULUM)
   ? window.TEACHER_HQ_CURRICULUM
   : [];
+
+const FINE_ARTS_CURRICULUM = Array.isArray(window.TEACHER_HQ_FINE_ARTS_CURRICULUM)
+  ? window.TEACHER_HQ_FINE_ARTS_CURRICULUM
+  : [];
+
+const CURRICULUM = [...CORE_CURRICULUM, ...FINE_ARTS_CURRICULUM];
 
 const CURRICULUM_CONTEXTS = Array.isArray(window.TEACHER_HQ_CURRICULUM_CONTEXTS)
   ? window.TEACHER_HQ_CURRICULUM_CONTEXTS
@@ -2753,7 +2759,7 @@ function buildSelectedCurriculumSnapshots() {
 
 function enrichCurriculumSnapshot(record, user = getActiveUser()) {
   const snapshot = structuredCloneSafe(record);
-  if (record.type === "Skills & Procedures") {
+  if (record.type === "Skills & Procedures" || record.bloomEligible) {
     const analysis = analyzeCurriculumVerb(record.text);
     snapshot.keyVerb = analysis.keyVerb;
     snapshot.bloomMatches = [...analysis.matches];
@@ -2762,12 +2768,35 @@ function enrichCurriculumSnapshot(record, user = getActiveUser()) {
   return snapshot;
 }
 
+function curriculumRecordMatchesSubject(record, subjectValue) {
+  const subject = String(subjectValue || "").trim().toLowerCase();
+  const recordSubject = String(record?.subject || "").trim().toLowerCase();
+  const discipline = String(record?.discipline || "").trim().toLowerCase();
+
+  if (subject === "fine arts" || subject === "fine art" || subject === "arts") {
+    return recordSubject === "fine arts";
+  }
+
+  if (["art", "visual art", "visual arts"].includes(subject)) {
+    return recordSubject === "fine arts" && discipline === "art";
+  }
+
+  if (subject === "drama") {
+    return recordSubject === "fine arts" && discipline === "drama";
+  }
+
+  if (["music", "general music"].includes(subject)) {
+    return recordSubject === "fine arts" && discipline === "music";
+  }
+
+  return recordSubject === subject;
+}
+
 function getCurriculumForClass(classSpec) {
-  const subject = String(classSpec?.subject || "").toLowerCase();
   const grades = normalizeGradeArray(classSpec?.grades || []);
 
   return CURRICULUM.filter(record =>
-    String(record.subject || "").toLowerCase() === subject &&
+    curriculumRecordMatchesSubject(record, classSpec?.subject) &&
     grades.includes(record.grade)
   );
 }
@@ -2838,7 +2867,7 @@ function analyzeCurriculumVerb(text) {
 }
 
 function getCurriculumBloomLevel(record, user = getActiveUser(), analysis = null) {
-  if (!record || record.type !== "Skills & Procedures") return "";
+  if (!record || !(record.type === "Skills & Procedures" || record.bloomEligible)) return "";
 
   const override = user?.bloomOverrides?.[record.id];
   if (BLOOM_LEVELS.includes(override)) return override;
@@ -2858,7 +2887,7 @@ function makeCurriculumText(record, user) {
   const text = document.createElement("span");
   text.className = "curriculum-leaf-text";
 
-  if (record.type !== "Skills & Procedures") {
+  if (!(record.type === "Skills & Procedures" || record.bloomEligible)) {
     text.textContent = record.text;
     wrapper.appendChild(text);
     return wrapper;
@@ -2973,6 +3002,38 @@ function makeCurriculumText(record, user) {
     meta.appendChild(notice);
   }
 
+  const statusLabels = {
+    required: "Required",
+    core: "Core",
+    elective: "Optional / Elective",
+    "teacher-choice": "Teacher choice",
+    "program-expectation": "Program expectation",
+    "required-framework": "Required framework",
+    "teacher-selected-module": "Teacher-selected module",
+    "optional-competency": "Optional arts competency"
+  };
+
+  if (record.requiredStatus && statusLabels[record.requiredStatus]) {
+    const status = document.createElement("span");
+    status.className = `curriculum-status-badge status-${record.requiredStatus}`;
+    status.textContent = statusLabels[record.requiredStatus];
+    meta.appendChild(status);
+  }
+
+  if (record.curriculumFormat === "fine-arts-tree" && record.assessmentTarget) {
+    const target = document.createElement("span");
+    target.className = "curriculum-assessment-target";
+    target.textContent = "Assessment target";
+    meta.appendChild(target);
+  }
+
+  if (record.overviewOnly) {
+    const overview = document.createElement("span");
+    overview.className = "curriculum-overview-only";
+    overview.textContent = "Program overview";
+    meta.appendChild(overview);
+  }
+
   wrapper.appendChild(meta);
   return wrapper;
 }
@@ -3052,6 +3113,146 @@ function makeScienceUnitContextPreview(records) {
   return details;
 }
 
+
+function isFineArtsCurriculumRecord(record) {
+  return record?.curriculumFormat === "fine-arts-tree" && Array.isArray(record.curriculumPath);
+}
+
+function fineArtsPathKey(path, depth) {
+  return path.slice(0, depth + 1).map(item => `${item.label || "Branch"}:${item.title || ""}`).join("::");
+}
+
+function fineArtsProgramNotice(records) {
+  if (!(records || []).some(record => Number(record.electiveMaximumPercent) === 30)) return null;
+  const notice = document.createElement("div");
+  notice.className = "fine-arts-program-rule";
+  notice.innerHTML = `<strong>Required / elective balance</strong><span>The junior-high program permits up to 30% of instructional time for the elective/enrichment component. Teacher HQ keeps official learner expectations separate from elective extension time.</span>`;
+  return notice;
+}
+
+function fineArtsLeafGroupLabel(records, type) {
+  const roles = new Set((records || []).map(record => record.role));
+  if (roles.has("assessmentTarget")) return "Assessment Target";
+  if (roles.has("mediaTechnique")) return "Media / Technique";
+  if (roles.has("module")) return "Module";
+  if (roles.has("programGoal")) return "Program Goal / Framework";
+  if (roles.has("competency")) return "Optional Arts Competency";
+  if (roles.has("skill")) return "Skill / Learner Expectation";
+  if (roles.has("concept")) return "Concept";
+  return curriculumTypeDisplayLabel(records, type);
+}
+
+function buildFineArtsTree(records) {
+  const root = { children: new Map(), records: [] };
+  (records || []).forEach(record => {
+    let node = root;
+    (record.curriculumPath || []).forEach((item, index) => {
+      const key = `${item.label || "Branch"}|||${item.title || ""}`;
+      if (!node.children.has(key)) {
+        node.children.set(key, { item, children: new Map(), records: [], depth: index });
+      }
+      node = node.children.get(key);
+    });
+    node.records.push(record);
+  });
+  return root;
+}
+
+function renderFineArtsUnitTree(container, records, openState = null) {
+  const user = getActiveUser();
+  const byGrade = groupBy(records, record => record.grade);
+
+  Object.entries(byGrade).forEach(([grade, gradeRecords]) => {
+    const gradeSection = document.createElement("details");
+    const gradeBranchId = `finearts::grade::${grade}`;
+    gradeSection.className = "curriculum-level curriculum-grade fine-arts-grade";
+    gradeSection.dataset.curriculumBranchId = gradeBranchId;
+    gradeSection.open = Boolean(openState?.has(gradeBranchId));
+
+    const summary = document.createElement("summary");
+    const main = document.createElement("div");
+    main.className = "curriculum-summary-main";
+    main.innerHTML = `<span class="curriculum-chevron" aria-hidden="true"></span><div class="curriculum-card-title"><span class="curriculum-level-label">Grade / Subject</span><strong>${escapeHTML(grade)} ${escapeHTML(unitDraft?.classSpec?.subject || "Fine Arts")}</strong><small>Art · Drama · Music</small></div>`;
+    summary.append(main, makeCurriculumSelectionControls(gradeRecords));
+    gradeSection.appendChild(summary);
+
+    const rule = fineArtsProgramNotice(gradeRecords);
+    if (rule) gradeSection.appendChild(rule);
+
+    const tree = buildFineArtsTree(gradeRecords);
+    const renderNode = (node, parent, parentId) => {
+      node.children.forEach((child, key) => {
+        const allRecords = collectFineArtsNodeRecords(child);
+        const details = document.createElement("details");
+        const id = `${parentId}::${slugForCurriculumBranch(key)}`;
+        details.className = `curriculum-level fine-arts-branch fine-arts-depth-${child.depth}`;
+        details.dataset.curriculumBranchId = id;
+        details.open = Boolean(openState?.has(id));
+
+        const summary = document.createElement("summary");
+        const main = document.createElement("div");
+        main.className = "curriculum-summary-main";
+        main.innerHTML = `<span class="curriculum-chevron" aria-hidden="true"></span><div class="curriculum-card-title"><span class="curriculum-level-label">${escapeHTML(child.item.label || "Branch")}</span><strong>${escapeHTML(child.item.title || "")}</strong>${child.item.description ? `<small>${escapeHTML(child.item.description)}</small>` : ""}</div>`;
+        summary.append(main, makeCurriculumSelectionControls(allRecords));
+        details.appendChild(summary);
+
+        appendFineArtsUnitLeaves(details, child.records, user);
+        renderNode(child, details, id);
+        parent.appendChild(details);
+      });
+      appendFineArtsUnitLeaves(parent, node.records, user);
+    };
+    renderNode(tree, gradeSection, gradeBranchId);
+    container.appendChild(gradeSection);
+  });
+}
+
+function collectFineArtsNodeRecords(node) {
+  const output = [...(node.records || [])];
+  node.children?.forEach(child => output.push(...collectFineArtsNodeRecords(child)));
+  return output;
+}
+
+function slugForCurriculumBranch(value) {
+  return String(value || "branch").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 90);
+}
+
+function appendFineArtsUnitLeaves(parent, records, user) {
+  if (!records?.length) return;
+  const byType = groupBy(records, record => record.type || "Curriculum Item");
+  Object.entries(byType).forEach(([type, typeRecords]) => {
+    const box = document.createElement("section");
+    box.className = `curriculum-type-box fine-arts-leaf-group curriculum-type-${String(type).toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`;
+    const header = document.createElement("div");
+    header.className = "curriculum-type-header";
+    header.innerHTML = `<div class="curriculum-type-heading"><strong>${escapeHTML(fineArtsLeafGroupLabel(typeRecords, type))}</strong><span class="curriculum-type-count">${typeRecords.length} item${typeRecords.length === 1 ? "" : "s"}</span></div>`;
+    header.appendChild(makeCurriculumSelectionControls(typeRecords));
+    box.appendChild(header);
+    const list = document.createElement("div");
+    list.className = "curriculum-leaf-list";
+    typeRecords.forEach(record => {
+      const label = document.createElement("label");
+      label.className = "curriculum-leaf";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.dataset.curriculumId = record.id;
+      checkbox.checked = unitCurriculumSelection.has(record.id);
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) unitCurriculumSelection.add(record.id); else unitCurriculumSelection.delete(record.id);
+        label.classList.toggle("selected", checkbox.checked);
+        syncCurriculumSelectionUI();
+      });
+      const visual = document.createElement("span");
+      visual.className = "curriculum-checkmark";
+      label.classList.toggle("selected", checkbox.checked);
+      label.append(checkbox, visual, makeCurriculumText(record, user));
+      list.appendChild(label);
+    });
+    box.appendChild(list);
+    parent.appendChild(box);
+  });
+}
+
 function captureCurriculumOpenState() {
   const openIds = new Set();
   document
@@ -3085,6 +3286,12 @@ function renderCurriculumBrowser(openState = null) {
   empty.classList.add("hidden");
   $("selectAllCurriculumButton").disabled = false;
 
+  if (records.length && records.every(isFineArtsCurriculumRecord)) {
+    renderFineArtsUnitTree(container, records, openState);
+    syncCurriculumSelectionUI();
+    return;
+  }
+
   const byGrade = groupBy(records, record => record.grade);
 
   Object.entries(byGrade).forEach(([grade, gradeRecords]) => {
@@ -3093,7 +3300,7 @@ function renderCurriculumBrowser(openState = null) {
 
     gradeSection.className = "curriculum-level curriculum-grade";
     gradeSection.dataset.curriculumBranchId = gradeBranchId;
-    gradeSection.open = openState ? openState.has(gradeBranchId) : true;
+    gradeSection.open = openState ? openState.has(gradeBranchId) : false;
 
     const summary = document.createElement("summary");
 
@@ -4405,7 +4612,7 @@ function curriculumRecordsForRelation(unit, relation) {
   }
 
   return CURRICULUM.filter(record =>
-    String(record.subject || "").toLowerCase() === subject &&
+    curriculumRecordMatchesSubject(record, unit?.classSpec?.subject) &&
     targetGrades.includes(record.grade)
   );
 }
@@ -4422,6 +4629,79 @@ function curriculumRelationTargetLabel(unit, relation) {
   );
 
   return shifted.length ? `${gradeDisplay(shifted)} ${subject}`.trim() : `No ${relation === "prerequisite" ? "previous" : "next"} grade can be inferred`;
+}
+
+
+function renderFineArtsWorkspaceCourse(browser, courseRecords, selectedIds, makeControls, persist, sync, unit) {
+  const grade = courseRecords[0]?.grade || "Grade";
+  const gradeSection = document.createElement("details");
+  gradeSection.className = "curriculum-level curriculum-grade fine-arts-grade";
+  gradeSection.open = false;
+
+  const summary = document.createElement("summary");
+  const main = document.createElement("div");
+  main.className = "curriculum-summary-main";
+  main.innerHTML = `<span class="curriculum-chevron" aria-hidden="true"></span><div class="curriculum-card-title"><span class="curriculum-level-label">Grade / Subject</span><strong>${escapeHTML(grade)} Fine Arts</strong><small>Art · Drama · Music</small></div>`;
+  summary.append(main, makeControls(courseRecords));
+  gradeSection.appendChild(summary);
+  const rule = fineArtsProgramNotice(courseRecords);
+  if (rule) gradeSection.appendChild(rule);
+
+  const tree = buildFineArtsTree(courseRecords);
+  const appendLeaves = (parent, records) => {
+    if (!records?.length) return;
+    const byType = groupBy(records, record => record.type || "Curriculum Item");
+    Object.entries(byType).forEach(([type, typeRecords]) => {
+      const box = document.createElement("section");
+      box.className = "curriculum-type-box fine-arts-leaf-group";
+      const header = document.createElement("div");
+      header.className = "curriculum-type-header";
+      header.innerHTML = `<div class="curriculum-type-heading"><strong>${escapeHTML(fineArtsLeafGroupLabel(typeRecords, type))}</strong><span class="curriculum-type-count">${typeRecords.length} item${typeRecords.length === 1 ? "" : "s"}</span></div>`;
+      header.appendChild(makeControls(typeRecords));
+      box.appendChild(header);
+      const list = document.createElement("div");
+      list.className = "curriculum-leaf-list";
+      typeRecords.forEach(record => {
+        const label = document.createElement("label");
+        label.className = "curriculum-leaf";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.dataset.workspaceCurriculumId = record.id;
+        checkbox.checked = selectedIds.has(record.id);
+        checkbox.disabled = readOnlyMode;
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) selectedIds.add(record.id); else selectedIds.delete(record.id);
+          label.classList.toggle("selected", checkbox.checked);
+          persist(); sync();
+        });
+        const visual = document.createElement("span");
+        visual.className = "curriculum-checkmark";
+        label.classList.toggle("selected", checkbox.checked);
+        label.append(checkbox, visual, makeCurriculumText(record, getActiveUser()));
+        list.appendChild(label);
+      });
+      box.appendChild(list); parent.appendChild(box);
+    });
+  };
+  const renderNode = (node, parent) => {
+    node.children.forEach(child => {
+      const details = document.createElement("details");
+      details.className = `curriculum-level fine-arts-branch fine-arts-depth-${child.depth}`;
+      details.open = false;
+      const summary = document.createElement("summary");
+      const main = document.createElement("div");
+      main.className = "curriculum-summary-main";
+      main.innerHTML = `<span class="curriculum-chevron" aria-hidden="true"></span><div class="curriculum-card-title"><span class="curriculum-level-label">${escapeHTML(child.item.label || "Branch")}</span><strong>${escapeHTML(child.item.title || "")}</strong></div>`;
+      summary.append(main, makeControls(collectFineArtsNodeRecords(child)));
+      details.appendChild(summary);
+      appendLeaves(details, child.records);
+      renderNode(child, details);
+      parent.appendChild(details);
+    });
+    appendLeaves(parent, node.records);
+  };
+  renderNode(tree, gradeSection);
+  browser.appendChild(gradeSection);
 }
 
 function renderWorkspaceCurriculumPicker(unit, relation, container) {
@@ -4603,9 +4883,15 @@ function renderWorkspaceCurriculumPicker(unit, relation, container) {
 
   Object.entries(byCourse).forEach(([courseKey, courseRecords]) => {
     const [grade, subject] = courseKey.split("|||");
+
+    if (courseRecords.length && courseRecords.every(isFineArtsCurriculumRecord)) {
+      renderFineArtsWorkspaceCourse(browser, courseRecords, selectedIds, makeControls, persist, sync, unit);
+      return;
+    }
+
     const gradeSection = document.createElement("details");
     gradeSection.className = "curriculum-level curriculum-grade";
-    gradeSection.open = true;
+    gradeSection.open = false;
 
     const summary = document.createElement("summary");
     const main = document.createElement("div");

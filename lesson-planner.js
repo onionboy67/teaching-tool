@@ -699,6 +699,101 @@
     return wrap;
   }
 
+
+  function isFineArtsLessonRecord(record) {
+    return record?.curriculumFormat === "fine-arts-tree" && Array.isArray(record.curriculumPath);
+  }
+
+  function fineArtsLessonTree(records) {
+    const root = { children: new Map(), records: [] };
+    records.forEach(record => {
+      let node = root;
+      (record.curriculumPath || []).forEach((item, index) => {
+        const key = `${item.label || "Branch"}|||${item.title || ""}`;
+        if (!node.children.has(key)) node.children.set(key, { item, children: new Map(), records: [], depth: index });
+        node = node.children.get(key);
+      });
+      node.records.push(record);
+    });
+    return root;
+  }
+
+  function fineArtsLessonNodeRecords(node) {
+    const rows = [...(node.records || [])];
+    node.children?.forEach(child => rows.push(...fineArtsLessonNodeRecords(child)));
+    return rows;
+  }
+
+  function appendFineArtsLessonPicker(wrap, records, selectedIds, onChange) {
+    const byGrade = new Map();
+    records.forEach(record => {
+      if (!byGrade.has(record.grade)) byGrade.set(record.grade, []);
+      byGrade.get(record.grade).push(record);
+    });
+
+    byGrade.forEach((gradeRecords, grade) => {
+      const gradeDetails = document.createElement("details");
+      gradeDetails.className = "lesson-curriculum-details fine-arts-lesson-grade";
+      gradeDetails.innerHTML = `<summary><span>Grade / Subject</span><strong>${escapeHTML(grade)} Fine Arts</strong><small>${gradeRecords.filter(r => selectedIds.has(r.id)).length} selected</small></summary>`;
+
+      if (gradeRecords.some(r => Number(r.electiveMaximumPercent) === 30)) {
+        const rule = document.createElement("p");
+        rule.className = "lesson-fine-arts-rule";
+        rule.textContent = "Junior-high Fine Arts: elective/enrichment time is capped at 30% in the supplied Drama/Music programs.";
+        gradeDetails.appendChild(rule);
+      }
+
+      const tree = fineArtsLessonTree(gradeRecords);
+      const appendLeaves = (parent, leafRecords) => {
+        leafRecords.forEach(record => {
+          const label = document.createElement("label");
+          label.className = `lesson-curriculum-statement type-${String(record.type || "item").toLowerCase().replaceAll(" ", "-").replaceAll("&", "and")}`;
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = selectedIds.has(record.id);
+          checkbox.disabled = readOnlyMode;
+          const copy = document.createElement("div");
+          const type = document.createElement("small");
+          type.textContent = record.role === "assessmentTarget" ? "Assessment Target" : record.role === "concept" ? "Concept" : record.role === "module" ? "Module" : record.role === "programGoal" ? "Program Framework" : record.role === "competency" ? "Optional Arts Competency" : record.type;
+          const text = document.createElement("p");
+          const analysis = (record.type === "Skills & Procedures" || record.bloomEligible) ? analyzeCurriculumVerb(record.text) : null;
+          if (analysis?.keyVerb && record.text.toLowerCase().startsWith(analysis.keyVerb.toLowerCase())) {
+            text.innerHTML = `<mark>${escapeHTML(record.text.slice(0, analysis.keyVerb.length))}</mark>${escapeHTML(record.text.slice(analysis.keyVerb.length))}`;
+          } else text.textContent = record.text;
+          copy.append(type, text);
+          if (record.requiredStatus) {
+            const badge = document.createElement("small");
+            badge.className = "lesson-curriculum-status";
+            badge.textContent = String(record.requiredStatus).replaceAll("-", " ");
+            copy.appendChild(badge);
+          }
+          label.append(checkbox, copy);
+          checkbox.addEventListener("change", () => {
+            if (checkbox.checked) selectedIds.add(record.id); else selectedIds.delete(record.id);
+            onChange([...selectedIds]);
+            const count = lp$(".lesson-curriculum-pool-heading strong", wrap);
+            if (count) count.textContent = `${selectedIds.size} selected`;
+          });
+          parent.appendChild(label);
+        });
+      };
+      const renderNode = (node, parent) => {
+        node.children.forEach(child => {
+          const details = document.createElement("details");
+          details.className = `lesson-curriculum-details fine-arts-depth-${child.depth}`;
+          const selectedCount = fineArtsLessonNodeRecords(child).filter(r => selectedIds.has(r.id)).length;
+          details.innerHTML = `<summary><span>${escapeHTML(child.item.label || "Branch")}</span><strong>${escapeHTML(child.item.title || "")}</strong><small>${selectedCount ? `${selectedCount} selected` : ""}</small></summary>`;
+          appendLeaves(details, child.records);
+          renderNode(child, details);
+          parent.appendChild(details);
+        });
+        appendLeaves(parent, node.records);
+      };
+      renderNode(tree, gradeDetails);
+      wrap.appendChild(gradeDetails);
+    });
+  }
+
   function curriculumPickerCard({ title, subtitle, records, selectedIds, prominent = false, onChange, emptyText }) {
     const wrap = document.createElement("div");
     wrap.className = `lesson-curriculum-pool ${prominent ? "prominent" : "subdued"}`;
@@ -709,6 +804,11 @@
       empty.className = "empty-state";
       empty.textContent = emptyText || "No curriculum has been added to this Unit pool yet.";
       wrap.appendChild(empty);
+      return wrap;
+    }
+
+    if (records.every(isFineArtsLessonRecord)) {
+      appendFineArtsLessonPicker(wrap, records, selectedIds, onChange);
       return wrap;
     }
 
@@ -754,7 +854,7 @@
                   : record.type;
               }
               const text = document.createElement("p");
-              if (record.type === "Skills & Procedures") {
+              if (record.type === "Skills & Procedures" || record.bloomEligible) {
                 const analysis = analyzeCurriculumVerb(record.text);
                 if (analysis.keyVerb && record.text.toLowerCase().startsWith(analysis.keyVerb.toLowerCase())) {
                   text.innerHTML = `<mark>${escapeHTML(record.text.slice(0, analysis.keyVerb.length))}</mark>${escapeHTML(record.text.slice(analysis.keyVerb.length))}`;

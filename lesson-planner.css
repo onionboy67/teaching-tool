@@ -724,3 +724,33 @@
   display: inline-flex; width: max-content; margin-top: 6px; padding: 4px 8px; border-radius: 999px;
   background: #fff0f3; color: #a61b36 !important; border: 1px solid #ffc2cf; font-weight: 800;
 }
+
+
+/* Fine Arts curriculum trees */
+.lesson-curriculum-details {
+  margin: 8px 0;
+  border: 1px solid rgba(0,0,0,.08);
+  border-radius: 15px;
+  background: rgba(255,255,255,.72);
+  overflow: hidden;
+}
+.lesson-curriculum-details > summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 11px 13px;
+  cursor: pointer;
+  list-style: none;
+}
+.lesson-curriculum-details > summary::-webkit-details-marker { display: none; }
+.lesson-curriculum-details > summary span { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: #8e8e93; }
+.lesson-curriculum-details > summary strong { font-size: 13px; color: #1d1d1f; }
+.lesson-curriculum-details > summary small { font-size: 10px; color: #8e8e93; }
+.lesson-curriculum-details .lesson-curriculum-statement { margin: 7px 10px 10px; }
+.fine-arts-depth-0 { margin-left: 8px; }
+.fine-arts-depth-1 { margin-left: 16px; }
+.fine-arts-depth-2 { margin-left: 24px; }
+.fine-arts-depth-3, .fine-arts-depth-4 { margin-left: 30px; }
+.lesson-fine-arts-rule { margin: 8px 12px 12px; padding: 10px 12px; border-radius: 12px; background: rgba(255,159,10,.1); color: #6e4a00; font-size: 12px; }
+.lesson-curriculum-status { display:inline-block; margin-top:5px; padding:3px 7px; border-radius:999px; background:rgba(0,0,0,.06); color:#6e6e73; text-transform:capitalize; }
