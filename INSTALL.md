@@ -1,39 +1,43 @@
-# Teacher HQ — Installation & Smoke Test
+# Teacher HQ — Foundation Tracker Reset v18
 
 ## Install on GitHub Pages
-This package is a full replacement set. Use the same GitHub upload workflow that has been reliable for Teacher HQ:
+This is the new synchronization/reset package. It is designed for the same simple upload workflow used successfully for Teacher HQ.
 
-1. Extract the ZIP locally.
+1. Extract `TeacherHQ_Foundation_Reset_v18.zip` locally.
 2. Open the `onionboy67/teaching-tool` repository on github.com.
 3. Choose **Add file → Upload files**.
-4. Upload the extracted files themselves, not the ZIP.
-5. Let files with matching names replace the existing versions and let the two new files be added:
-   - `main-page-redesign.css`
-   - `main-page-redesign.js`
-6. Commit directly to `main`.
-7. Wait for GitHub Pages to deploy, then refresh Teacher HQ normally.
+4. Upload **all extracted files from this ZIP**. Do not upload the ZIP itself.
+5. Let matching files replace their existing versions and let the new Development Tracker/manifest files be added.
+6. **Do not delete the repository first.** A small group of unchanged v17 runtime files was not part of the supplied reset upload and is intentionally preserved in-place on GitHub; `BUILD_MANIFEST.json` lists them.
+7. Commit directly to `main` with:
 
-Suggested commit message:
+   `Add development tracker and reset Teacher HQ baseline`
 
-`Redesign Teacher HQ overview, cohorts and curriculum browser`
+8. After GitHub Pages deploys, refresh Teacher HQ. The HTML uses `?v=18` asset keys to force fresh browser copies.
 
-## Fast smoke test
-1. Open a user profile and confirm the main page loads.
-2. Confirm the persistent left menu shows Cohorts, Classes, Unit Planner, Curriculum Browser, Backup & Share, Trash.
-3. Confirm the Overview right rail shows Notifications, Add Lesson, Days Off, Calendar View.
-4. Click **Cohorts** and open a Cohort. Confirm it opens to Students & Interests and contains the Attention Grabbers, Curriculum Progress, and Assessments tabs.
-5. Add an Attention Grabber such as `Clap Sequence`.
-6. Open/create a Lesson, add a **Hook**, and confirm that Cohort Attention Grabber is selectable.
-7. Click an Overview calendar date and confirm Daily View opens. Test `+ Lesson`, `+ Event`, and `+ Block`.
-8. Add a **Sub Day** and confirm normal instructional lessons remain visible for that date along with the SUB indicator.
-9. Open **Curriculum Browser**. Choose a Grade button, then a Subject button, and open curriculum branches.
-10. Add a curriculum note, close/reopen the browser, and confirm the note remains.
-11. Enable **Split grade view** and confirm two independent Grade → Subject → Curriculum panes appear.
-12. Switch Curriculum Browser to **Progressions** and confirm progression browsing works.
-13. Select a noted curriculum objective in Lesson Planner and confirm the teacher note appears with the `Show this note on the lesson plan` option.
-14. Open Lesson Print View and confirm the note prints only when that option is selected.
-15. Open **Backup & Share** from the left navigation and confirm it moves to the existing backup/share section.
-16. Open **Calendar View** and confirm the dedicated calendar page loads.
+No manual HTML/code editing is required.
 
-## Important data note
-Curriculum notes, custom daily Events/Blocks, Attention Grabbers, Cohorts, Classes, Lessons, and other planning data remain browser-local under the existing Teacher HQ storage architecture and are included in normal profile backup/share data according to the existing backup rules.
+## Development Tracker smoke test
+1. Open a Teacher HQ profile.
+2. Confirm **Development** appears at the bottom of the left navigation.
+3. Open it and create a test item in the Inbox.
+4. Set it as a foundation blocker and confirm the summary count updates.
+5. Choose **Point to Problem**, click a harmless control such as Curriculum Browser, and confirm structural context appears in the issue form.
+6. Save the issue, refresh the page, and confirm it persists.
+7. Add a Foundation Decision and confirm it receives a `D-###` ID.
+8. Export **AI Handoff JSON** and **Readable Markdown**.
+9. Open `calendar.html` and confirm the floating Development button can open the same tracker data.
+
+## Existing Teacher HQ smoke test
+Run the core v17 checks after deployment:
+1. Profile selection and main Overview load.
+2. Cohorts and Classes open.
+3. Unit Planner opens and existing units remain available.
+4. Lesson Planner opens.
+5. Calendar Daily View and dedicated Calendar View open.
+6. Curriculum Browser opens and curriculum notes remain available.
+7. Backup & Share and Trash open.
+8. Existing browser-local planning data remains intact.
+
+## Data separation
+The Development Tracker uses its own browser-local key: `teacherHQDevelopmentTracker_v1`. It is not stored inside the Teacher HQ profile schema and does not change `teacherHQData_v11`.

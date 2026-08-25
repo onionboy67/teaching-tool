@@ -1,46 +1,32 @@
 # Teacher HQ — QA Report
 
 ## Release
-Main Page, Cohort Workspace & Curriculum Browser Redesign (`?v=17`)
+Foundation Tracker Reset v18
 
 ## Automated/static checks performed
-- JavaScript syntax checked with Node `--check` across all JavaScript files: **PASS**.
-- `index.html` duplicate ID scan: **PASS** — no duplicate IDs.
-- `calendar.html` duplicate ID scan: **PASS** — no duplicate IDs.
-- HTML local JS/CSS reference scan: **PASS** — no missing referenced assets.
-- CSS brace-balance scan across core/release CSS files: **PASS**.
-- Main and Calendar View cache references: **PASS** — no remaining `?v=16` asset references.
+- JavaScript syntax checked with Node `--check` across all **12 packaged JavaScript files**: **PASS**.
+- `index.html` duplicate ID scan: **PASS**.
+- `calendar.html` duplicate ID scan: **PASS**.
+- HTML local JS/CSS reference scan: **PASS**, using the verified v17 preserved-runtime allowlist documented in `BUILD_MANIFEST.json`.
+- `data-validation.json` parse check: **PASS**.
+- CSS brace-balance scan across all **3 packaged CSS files**: **PASS**.
+- Failed Architecture Foundation v18 runtime-name/reference scan: **PASS** — no abandoned architecture runtime references are present.
+- Main and Calendar View cache references: **PASS** — both use `?v=18`.
 
-## Curriculum registry integrity
-The release does not alter official curriculum/progression datasets.
+## Development Tracker integration checks
+- `development-tracker.js` syntax: **PASS**.
+- Tracker storage is isolated at `teacherHQDevelopmentTracker_v1`; Teacher HQ `teacherHQData_v11` is not modified by the tracker.
+- Main-page access is dynamically appended to the existing `.hq-nav-list` when available.
+- Calendar View uses the floating Development fallback.
+- Point-to-Problem mode captures structural metadata (page/dialog/container/element identifiers, control metadata and structural path) rather than automatically copying visible student/page text.
+- JSON and Markdown handoff export routines are present.
+- JSON handoff import supports merge/replace.
+- Foundation Decision records use stable `D-###` identifiers.
 
-- Curriculum records: **10,316**
-- Unique curriculum IDs: **10,316**
-- Duplicate curriculum IDs: **0**
-- Progression records: **380**
-- Unique progression IDs: **380**
-- Duplicate progression IDs: **0**
-
-## Integration points checked in code
-- Persistent left menu IDs map to existing Cohort/Class/Unit/Curriculum/Backup/Trash actions.
-- Main `Calendar View` action replaces the old whole-calendar-card navigation behaviour.
-- Calendar date cells route to Daily View.
-- Daily View supports Lesson/Event/Block creation.
-- Daily linked Lessons, Field Trips and Assessments route to their existing editors.
-- `Sub Day` is excluded from `isNoSchoolDate`, so it does not remove valid instructional blocks.
-- Sub Day is displayed in Overview, Calendar View, Unit calendars and readable calendar output.
-- Cohort Attention Grabbers normalize into Cohort data and are exposed to Lesson Hook selection.
-- Legacy Lesson agenda type `attention-grabber` normalizes to `hook`.
-- Curriculum notes are stored on the user profile by stable curriculum record ID rather than modifying registry data.
-- Lesson curriculum note visibility is stored independently in each Lesson Plan.
-- Curriculum bulk Select/Clear logic remains separate from branch expansion state.
-- Split Grade View creates two independent Curriculum Browser panes.
-- Progressions use the same Browser dialog but remain visually/data-wise distinct from subject curriculum.
+## Baseline integrity
+- Files supplied by the user on 2026-08-25 are authoritative wherever present in this package.
+- The failed Architecture Foundation v18 package is not used as a runtime source.
+- Eight unchanged v17 runtime files that were not included in the user's supplied reset set are intentionally preserved in the existing GitHub repository rather than recreated or guessed. They are listed in `BUILD_MANIFEST.json`.
 
 ## Browser-runtime note
-A full automated browser harness is not bundled with this static GitHub Pages project. The release has therefore been validated structurally and by syntax/data-integrity checks; the included `INSTALL.md` smoke test should be run on the deployed GitHub Pages copy after upload, especially for visual spacing and real interaction flow.
-
-## Package integrity
-- Full replacement package contains **30 files**.
-- ZIP archive integrity test: **PASS** — no compressed-data errors detected.
-- Uncompressed package size: **11,071,578 bytes**.
+A full browser automation harness is not bundled with this static GitHub Pages project. Run the smoke test in `INSTALL.md` after deployment, especially Development Tracker persistence, Point-to-Problem selection, exports, and the core Teacher HQ navigation paths.
