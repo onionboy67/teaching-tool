@@ -4,8 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Teacher HQ</title>
-  <link rel="stylesheet" href="styles.css?v=12" />
-  <link rel="stylesheet" href="lesson-planner.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="lesson-planner.css?v=15" />
+  <link rel="stylesheet" href="mega-features.css?v=15" />
 </head>
 <body>
 
@@ -54,12 +55,15 @@
           </div>
 
           <div class="section-action-row edit-only">
+            <a href="calendar.html" class="secondary-button icon-text-button">▦ Full Calendar</a>
             <button id="manageDaysOffButton" class="secondary-button icon-text-button" title="Manage holidays, PD days, and other no-school dates">🌴 Days Off</button>
             <button id="addTermButton" class="secondary-button">+ Add School Term</button>
           </div>
         </div>
 
-        <div id="backupReminder" class="notice notice-backup hidden" role="status">
+        <div id="notificationDock" class="notification-dock hidden" role="status"></div>
+
+        <div id="backupReminder" class="notice notice-backup hidden legacy-notice" role="status">
           <div class="notice-icon">↓</div>
           <div>
             <strong>Today's backup has not been downloaded yet.</strong>
@@ -68,7 +72,7 @@
           <button id="backupReminderButton" class="secondary-button">Download Backup</button>
         </div>
 
-        <div id="unplannedAlert" class="notice notice-danger hidden" role="status">
+        <div id="unplannedAlert" class="notice notice-danger hidden legacy-notice" role="status">
           <div class="notice-icon">!</div>
           <div>
             <strong id="unplannedAlertText">Unplanned instructional blocks need attention</strong>
@@ -76,7 +80,7 @@
           </div>
         </div>
 
-        <div id="conflictAlert" class="notice notice-warning hidden" role="status">
+        <div id="conflictAlert" class="notice notice-warning hidden legacy-notice" role="status">
           <div class="notice-icon">!</div>
           <div>
             <strong id="conflictAlertText">Schedule conflicts need review</strong>
@@ -84,7 +88,7 @@
           </div>
         </div>
 
-        <div id="pdAlert" class="notice notice-info hidden" role="status">
+        <div id="pdAlert" class="notice notice-info hidden legacy-notice" role="status">
           <div class="notice-icon">i</div>
           <div>
             <strong id="pdAlertText">PD Day details need attention</strong>
@@ -121,15 +125,39 @@
         <div id="termSummaryList" class="term-summary-list"></div>
       </section>
 
+      <section id="classesSection" class="section">
+        <div class="section-heading-row">
+          <div>
+            <h2>Classes Taught</h2>
+            <p class="section-subtitle">Classes connect your schedule, curriculum, units, lesson planning, and curriculum coverage tracking.</p>
+          </div>
+          <button id="manageClassesButton" class="primary-button edit-only">Manage Classes</button>
+        </div>
+        <div id="classOverviewList" class="class-overview-grid"></div>
+      </section>
+
       <section class="section">
         <div class="section-heading-row">
           <div>
             <h2>Unit Planner</h2>
             <p class="section-subtitle">Create units, select curriculum when available, allocate instructional hours, and build lesson placeholders from your real schedule.</p>
           </div>
-          <button id="openUnitPlannerButton" class="primary-button edit-only">Open Unit Planner</button>
+          <div class="section-action-row">
+            <button id="openLessonPlannerHubButton" class="secondary-button edit-only">Lesson Planner</button>
+            <button id="openUnitPlannerButton" class="primary-button edit-only">Open Unit Planner</button>
+          </div>
         </div>
         <div id="unitOverviewList" class="unit-overview-list"></div>
+      </section>
+
+      <section class="section planning-tools-section">
+        <div class="section-heading-row">
+          <div><h2>Curriculum &amp; Progressions</h2><p class="section-subtitle">Browse Alberta curriculum independently, compare split grades, or explore literacy, numeracy, career, and competency progressions.</p></div>
+        </div>
+        <div class="tool-launch-grid">
+          <button id="openCurriculumBrowserButton" class="tool-launch-card"><span>📚</span><strong>Curriculum Browser</strong><small>Kindergarten–Grade 9 · split-grade view available</small></button>
+          <button id="openProgressionBrowserButton" class="tool-launch-card"><span>🧭</span><strong>Progression Browser</strong><small>Literacy · Numeracy · Career · Competencies</small></button>
+        </div>
       </section>
 
       <section id="weeklyScheduleSection" class="section hidden">
@@ -164,6 +192,7 @@
           <button id="downloadReadViewButton" class="secondary-button">Download Read View</button>
           <button id="previewReadViewButton" class="secondary-button">Preview Read View</button>
           <button id="restoreBackupHQButton" class="secondary-button edit-only">Restore Backup</button>
+          <button id="openTrashButton" class="secondary-button edit-only">Trash</button>
         </div>
         <p id="backupStatusText" class="section-subtitle backup-status"></p>
       </section>
@@ -249,6 +278,7 @@
       </div>
       <label class="form-field"><span>Optional Label</span><input id="blockLabel" type="text" placeholder="Morning routine, assembly, library..." /></label>
       <section id="instructionalOptions">
+        <label class="form-field class-first-field"><span>Class <small>(recommended)</small></span><select id="blockClass"><option value="">Manual grade / subject</option></select><small>Selecting a saved class fills the grade and subject automatically.</small></label>
         <div class="form-grid two-column-grid">
           <label class="form-field"><span>Grade</span><select id="blockGrade"><option value="">Select grade</option></select></label>
           <label class="form-field"><span>Subject</span><select id="blockSubject"><option value="">Select subject</option></select></label>
@@ -321,17 +351,17 @@
                   <p class="question-kicker">Dates</p>
                   <h3>When does it happen?</h3>
                 </div>
-                <span class="date-range-hint">Use the same date twice for a single day.</span>
+                <label class="range-toggle"><input id="dayOffUseRange" type="checkbox" /><span>Date range</span></label>
               </div>
               <div class="date-range-grid">
                 <label class="date-card">
                   <span>Start Date</span>
                   <input id="dayOffStartDate" type="date" required />
                 </label>
-                <div class="date-range-arrow">→</div>
-                <label class="date-card">
+                <div id="dayOffRangeArrow" class="date-range-arrow hidden">→</div>
+                <label id="dayOffEndDateCard" class="date-card hidden">
                   <span>End Date</span>
-                  <input id="dayOffEndDate" type="date" required />
+                  <input id="dayOffEndDate" type="date" />
                 </label>
               </div>
             </div>
@@ -504,6 +534,7 @@
       </header>
 
       <nav id="unitWorkspaceNav" class="unit-workspace-nav" aria-label="Unit workspace sections">
+        <button type="button" data-unit-section="calendar">Calendar</button>
         <button type="button" data-unit-section="curriculum">Curriculum</button>
         <button type="button" data-unit-section="simulation">Simulation</button>
         <button type="button" data-unit-section="project">Project</button>
@@ -511,8 +542,7 @@
         <button type="button" data-unit-section="resources">Resources</button>
         <button type="button" data-unit-section="fieldTrips">Field Trips</button>
         <button type="button" data-unit-section="lessons">Lessons</button>
-        <button type="button" data-unit-section="numeracy">Numeracy</button>
-        <button type="button" data-unit-section="literacy">Literacy</button>
+        <button type="button" data-unit-section="progressions">Progressions</button>
         <button type="button" data-unit-section="learningModalities">Learning Modalities</button>
         <button type="button" data-unit-section="indigenousVoices">Indigenous Voices</button>
         <button type="button" data-unit-section="cognitiveTempo">Cognitive Tempo</button>
@@ -555,10 +585,19 @@
     </div>
   </dialog>
 
-  <script src="curriculum-data.js?v=5"></script>
-  <script src="fine-arts-data.js?v=1"></script>
-  <script src="bloom-data.js?v=2"></script>
-  <script src="app.js?v=12"></script>
-  <script src="lesson-planner.js?v=4"></script>
+  <script src="curriculum-data.js?v=15"></script>
+  <script src="fine-arts-data.js?v=15"></script>
+  <script src="social-studies-data.js?v=15"></script>
+  <script src="career-curriculum-data.js?v=15"></script>
+  <script src="progressions-data.js?v=15"></script>
+  <script src="data-registry.js?v=15"></script>
+  <script src="bloom-data.js?v=15"></script>
+  <script src="app.js?v=15"></script>
+  <script src="lesson-planner.js?v=15"></script>
+  <script src="classes.js?v=15"></script>
+  <script src="calendar-tools.js?v=15"></script>
+  <script src="curriculum-browser.js?v=15"></script>
+  <script src="trash.js?v=15"></script>
+  <script src="mega-features.js?v=15"></script>
 </body>
 </html>

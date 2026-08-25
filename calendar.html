@@ -2,34 +2,82 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calendar — Teacher HQ</title>
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Teacher HQ — Full Calendar</title>
+  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="mega-features.css?v=15" />
+  <link rel="stylesheet" href="calendar-page.css?v=15" />
 </head>
-
-<body>
-  <main class="page-shell">
-    <header class="top-bar">
+<body class="full-calendar-page">
+  <main class="full-calendar-shell">
+    <header class="full-calendar-topbar">
       <div>
-        <h1>Calendar</h1>
-        <p class="section-subtitle">
-          The full School Terms calendar will be expanded here in the next calendar build.
-        </p>
+        <a class="text-button calendar-back" href="index.html">← Teacher HQ</a>
+        <p class="small-label">Calendar Workspace</p>
+        <h1 id="fullCalendarTitle">Full Calendar</h1>
+        <p id="fullCalendarMeta" class="section-subtitle">Loading your teaching calendar…</p>
       </div>
-
-      <a href="index.html" class="secondary-button" style="text-decoration:none;">
-        ← Back to HQ
-      </a>
+      <div class="full-calendar-top-actions">
+        <label class="calendar-filter"><span>Class</span><select id="fullCalendarClassFilter"><option value="">All Classes</option></select></label>
+        <button id="fullCalendarToday" class="secondary-button" type="button">Today</button>
+      </div>
     </header>
 
-    <section class="section">
-      <div class="calendar-card">
-        <h2>School Terms Calendar</h2>
-        <p class="section-subtitle">
-          Your current month, planned/unplanned status, term overlaps, and historical schedule records are already shown on Teacher HQ. This page is reserved for the larger calendar tool.
-        </p>
+    <div id="fullCalendarNoUser" class="empty-state-card hidden">
+      <strong>No active Teacher HQ user was found.</strong>
+      <p>Open Teacher HQ, select a user, then return to the Full Calendar.</p>
+      <a class="primary-button" href="index.html">Open Teacher HQ</a>
+    </div>
+
+    <section id="fullCalendarWorkspace" class="full-calendar-workspace hidden">
+      <div class="full-calendar-main">
+        <div class="full-calendar-controls">
+          <button id="fullCalendarPrev" class="icon-button" aria-label="Previous month">←</button>
+          <div><p class="small-label">Month</p><h2 id="fullCalendarMonth"></h2></div>
+          <button id="fullCalendarNext" class="icon-button" aria-label="Next month">→</button>
+        </div>
+        <div id="fullCalendarGrid" class="full-calendar-grid"></div>
       </div>
+
+      <aside class="full-calendar-sidebar">
+        <section class="calendar-side-card">
+          <div class="calendar-side-heading"><span>🔔</span><div><strong>Notifications</strong><small>Items that may need attention</small></div></div>
+          <div id="fullCalendarNotifications" class="full-calendar-notifications"></div>
+        </section>
+        <section class="calendar-side-card">
+          <div class="calendar-side-heading"><span>◉</span><div><strong>Legend</strong><small>Calendar signals</small></div></div>
+          <div class="full-calendar-legend">
+            <span><i class="legend-swatch unplanned"></i>Needs planning</span>
+            <span><i class="legend-swatch planned"></i>Planned lesson</span>
+            <span><i class="legend-swatch trip"></i>Field trip</span>
+            <span><i class="legend-swatch off"></i>Day off / PD</span>
+            <span><i class="legend-swatch weekend"></i>Weekend</span>
+          </div>
+        </section>
+      </aside>
     </section>
   </main>
+
+  <dialog id="fullDailyDialog" class="modal extra-large-modal daily-view-dialog">
+    <div class="modal-content">
+      <div class="modal-heading">
+        <div><p class="small-label">Daily View</p><h2 id="fullDailyTitle"></h2><p id="fullDailyMeta" class="section-subtitle"></p></div>
+        <button id="fullDailyClose" type="button" class="close-button">×</button>
+      </div>
+      <div id="fullDailyAlerts" class="daily-alerts"></div>
+      <div class="daily-view-actions print-friendly-actions">
+        <button id="fullDailyPrintView" type="button" class="secondary-button">View Print-Friendly Version</button>
+        <button id="fullDailyDownload" type="button" class="secondary-button">Download Print-Friendly Version</button>
+      </div>
+      <div id="fullDailyContent"></div>
+      <section class="daily-reflection-card">
+        <p class="small-label">Optional</p><h3>Daily Reflection</h3>
+        <textarea id="fullDailyReflection" rows="7" placeholder="What should you remember from today?"></textarea>
+        <small id="fullDailySaved"></small>
+      </section>
+    </div>
+  </dialog>
+
+  <script src="calendar-page.js?v=15"></script>
 </body>
 </html>

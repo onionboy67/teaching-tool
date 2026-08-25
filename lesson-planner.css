@@ -609,7 +609,7 @@
 .lesson-calendar-entry { display: block; width: 100%; margin-top: 4px; padding: 5px 6px; border: 1px solid transparent; border-radius: 7px; background: var(--lesson-unit-soft); color: #333; text-align: left; font-size: 8px; line-height: 1.2; box-shadow: inset 3px 0 0 var(--lesson-unit-colour); }
 .lesson-calendar-entry small,.lesson-calendar-entry strong { display: block; }
 .lesson-calendar-entry small { opacity: .65; font-size: 7px; }
-.lesson-calendar-entry.lesson-needs-attention { border-color: #e88a91; background: #fff1f1; box-shadow: inset 3px 0 0 #e35460; }
+.lesson-calendar-entry.lesson-needs-attention { border-color: #e35460; background: var(--lesson-unit-soft); box-shadow: inset 3px 0 0 var(--lesson-unit-colour), 0 0 0 1px rgba(227,84,96,.16); }
 .lesson-calendar-entry.lesson-complete { border-color: transparent; }
 .lesson-calendar-entry.other-unit { opacity: .82; }
 .lesson-management-list { margin-top: 18px; }
